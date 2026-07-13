@@ -192,7 +192,7 @@ class Command(BaseCommand):
         self.stdout.write('  ✓ Teachers assigned to classes')
 
     def _create_constraints(self):
-        # Secondes don't work Wednesday afternoon
+        # ── Secondes : pas de cours mercredi après-midi ──
         seconde = Niveau.objects.get(nom='Seconde')
         ContrainteSpecifique.objects.get_or_create(
             niveau=seconde,
@@ -201,16 +201,30 @@ class Command(BaseCommand):
             heure_limite=time(12, 0),
             description="Les Secondes ne travaillent pas le mercredi après-midi",
         )
-        # Premières finish at 15:00 on Friday
+        # ── Vendredi : tous finissent à 17h au lieu de 18h ──
+        # S'applique à tous les niveaux (créé sans niveau ni classe)
+        ContrainteSpecifique.objects.get_or_create(
+            type_contrainte='FIN_AVANCEE',
+            jour_semaine=4,
+            heure_limite=time(17, 0),
+            defaults={'description': 'Tous les cours finissent le vendredi à 17h'},
+        )
+        # ── Heures minimum par jour (4h min) ──
+        ContrainteSpecifique.objects.get_or_create(
+            type_contrainte='HEURES_MIN_JOUR',
+            valeur=4,
+            defaults={'description': 'Minimum 4h de cours par jour'},
+        )
+        # ── Les Premières n'ont pas cours après 17h le vendredi (cumul avec le général) ──
         premiere = Niveau.objects.get(nom='Première')
         ContrainteSpecifique.objects.get_or_create(
             niveau=premiere,
             type_contrainte='PAS_COURS_APRES',
             jour_semaine=4,
-            heure_limite=time(15, 0),
-            description="Les Premières arrêtent le vendredi à 15h",
+            heure_limite=time(17, 0),
+            description="Les Premières finissent le vendredi à 17h",
         )
-        # Computer room maintenance Thursday afternoon
+        # ── Salle informatique : maintenance jeudi après-midi ──
         salle_info = Salle.objects.get(type='INFORMATIQUE')
         DisponibiliteSalle.objects.get_or_create(
             salle=salle_info,

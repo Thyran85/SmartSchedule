@@ -11,6 +11,8 @@ class ContrainteSpecifique(models.Model):
         MAX_HEURES_CONSECUTIVES = 'MAX_HEURES_CONSEC', 'Max heures consécutives par matière'
         SPORT_APRES_MIDI = 'SPORT_APMIDI', 'Sport uniquement l\'après-midi'
         PAS_COURS_APRES = 'PAS_COURS_APRES', 'Pas de cours après une heure donnée'
+        FIN_AVANCEE = 'FIN_AVANCEE', 'Fin des cours avancée (ex: vendredi 17h)'
+        HEURES_MIN_PAR_JOUR = 'HEURES_MIN_JOUR', 'Heures minimum par jour'
 
     classe = models.ForeignKey('classes.Classe', on_delete=models.CASCADE, null=True, blank=True, related_name='contraintes')
     niveau = models.ForeignKey('classes.Niveau', on_delete=models.CASCADE, null=True, blank=True, related_name='contraintes')

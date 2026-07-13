@@ -144,10 +144,15 @@ export type EntityType = 'classe' | 'enseignant' | 'salle';
 export const DAYS = ['Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi'];
 
 export const TIME_SLOTS = [
-  { start: '07:00', end: '10:00' },
-  { start: '10:15', end: '12:00' },
-  { start: '14:00', end: '16:00' },
-  { start: '16:15', end: '18:00' },
+  { start: '07:00', end: '08:00' },
+  { start: '08:00', end: '09:00' },
+  { start: '09:00', end: '10:00' },
+  { start: '10:15', end: '11:00' },
+  { start: '11:00', end: '12:00' },
+  { start: '14:00', end: '15:00' },
+  { start: '15:00', end: '16:00' },
+  { start: '16:15', end: '17:00' },
+  { start: '17:00', end: '18:00' },
 ];
 
 export const ROOM_TYPES: Record<string, string> = {
@@ -173,4 +178,6 @@ export const CONSTRAINT_TYPES: Record<string, string> = {
   MAX_HEURES_CONSEC: 'Max heures consécutives',
   SPORT_APMIDI: 'Sport uniquement après-midi',
   PAS_COURS_APRES: 'Pas de cours après',
+  FIN_AVANCEE: 'Fin des cours avancée',
+  HEURES_MIN_JOUR: 'Heures minimum par jour',
 };

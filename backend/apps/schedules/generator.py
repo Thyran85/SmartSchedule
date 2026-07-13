@@ -1,24 +1,33 @@
 import random
-from datetime import time, timedelta, datetime
+from datetime import time, datetime
 from collections import defaultdict
 from django.db import transaction
-from ..classes.models import Classe, Niveau
-from ..subjects.models import Matiere, ClasseMatiere
+from ..classes.models import Classe
+from ..subjects.models import ClasseMatiere
 from ..teachers.models import Enseignant, DisponibiliteEnseignant
 from ..rooms.models import Salle, DisponibiliteSalle
 from ..constraints.models import ContrainteSpecifique
 from .models import Cours, ScheduleVersion
 
-# Official school hours
-TIME_SLOTS = [
-    # Morning
-    ('07:00', '10:00'),
-    # Break 10:00-10:15 (no courses)
-    ('10:15', '12:00'),
-    # Afternoon
-    ('14:00', '16:00'),
-    # Break 16:00-16:15 (no courses)
-    ('16:15', '18:00'),
+# ── Time slots (1h granularity) ─────────────────────────────────────────
+# Morning  : 07-08, 08-09, 09-10
+# Break    10:00-10:15 (no courses)
+# Morning  : 10:15-11, 11-12
+# Lunch    12:00-14:00
+# Afternoon: 14-15, 15-16
+# Break    16:00-16:15 (no courses)
+# Afternoon: 16:15-17, 17-18
+
+SUB_SLOTS = [
+    (7, 0, 8, 0),     # 0
+    (8, 0, 9, 0),     # 1
+    (9, 0, 10, 0),    # 2
+    (10, 15, 11, 0),  # 3
+    (11, 0, 12, 0),   # 4
+    (14, 0, 15, 0),   # 5
+    (15, 0, 16, 0),   # 6
+    (16, 15, 17, 0),  # 7
+    (17, 0, 18, 0),   # 8
 ]
 
 BREAKS = [
@@ -26,33 +35,51 @@ BREAKS = [
     (time(16, 0), time(16, 15)),
 ]
 
-DAYS = list(range(5))  # 0=Monday to 4=Friday
+DAYS = list(range(5))  # 0=Monday → 4=Friday
 
 
-def time_slots_generator():
-    """Generate all available (day, start, end) slots excluding breaks."""
-    for day in DAYS:
-        for slot_start, slot_end in TIME_SLOTS:
-            start_h, start_m = map(int, slot_start.split(':'))
-            end_h, end_m = map(int, slot_end.split(':'))
-            start_t = time(start_h, start_m)
-            end_t = time(end_h, end_m)
-            yield day, start_t, end_t
-
-
-def slots_per_week():
-    return list(time_slots_generator())
+def mk_time(h, m):
+    return time(h, m)
 
 
 def hours_between(t1, t2):
-    """Calculate hours between two time objects."""
     dt1 = datetime.combine(datetime.today(), t1)
     dt2 = datetime.combine(datetime.today(), t2)
     return abs((dt2 - dt1).total_seconds()) / 3600
 
 
+def slots_per_week(early_finish_days=None):
+    """
+    Return list of (day, start, end) 1h sub-slots.
+    early_finish_days: dict {day: last_slot_index} to cut the day short.
+    """
+    if early_finish_days is None:
+        early_finish_days = {}
+    result = []
+    for day in DAYS:
+        max_slot = early_finish_days.get(day, len(SUB_SLOTS) - 1)
+        for idx, (h1, m1, h2, m2) in enumerate(SUB_SLOTS):
+            if idx > max_slot:
+                break
+            result.append((day, mk_time(h1, m1), mk_time(h2, m2)))
+    return result
+
+
+def is_break(start, end):
+    for bs, be in BREAKS:
+        if start < be and end > bs:
+            return True
+    return False
+
+
+def slot_to_tuple(t):
+    """Convenience: (day, start, end) → hashable key."""
+    return (t[0], t[1], t[2])
+
+
+# ── Constraint Checker ──────────────────────────────────────────────────
+
 class ConstraintChecker:
-    """Central constraint checking for schedule generation."""
 
     def __init__(self):
         self.cache = {}
@@ -62,6 +89,7 @@ class ConstraintChecker:
         self.niveau_constraints = defaultdict(list)
         self.classe_constraints = defaultdict(list)
         self.matiere_constraints = defaultdict(list)
+        self.global_constraints = []
         for c in self.all_constraints:
             if c.niveau_id:
                 self.niveau_constraints[c.niveau_id].append(c)
@@ -69,50 +97,126 @@ class ConstraintChecker:
                 self.classe_constraints[c.classe_id].append(c)
             if c.matiere_id:
                 self.matiere_constraints[c.matiere_id].append(c)
+            if not c.niveau_id and not c.classe_id and not c.matiere_id:
+                self.global_constraints.append(c)
+
+    def get_early_finish_days(self, niveau_id, classe_id):
+        """Return dict of {day: last_allowed_slot_index} from FIN_AVANCEE constraints."""
+        result = {}
+        for c in self.global_constraints:
+            self._apply_early_finish(result, c)
+        for c in self.niveau_constraints.get(niveau_id, []):
+            self._apply_early_finish(result, c)
+        for c in self.classe_constraints.get(classe_id, []):
+            self._apply_early_finish(result, c)
+        return result
+
+    def _apply_early_finish(self, result, c):
+        if c.type_contrainte != 'FIN_AVANCEE' or c.jour_semaine is None:
+            return
+        if c.heure_limite:
+            h, m = c.heure_limite.hour, c.heure_limite.minute
+            # Find the last sub-slot that ends <= limit
+            for idx, (h1, m1, h2, m2) in enumerate(SUB_SLOTS):
+                if mk_time(h2, m2) > c.heure_limite:
+                    result[c.jour_semaine] = idx - 1 if idx > 0 else -1
+                    return
+            result[c.jour_semaine] = len(SUB_SLOTS) - 1
+
+    def get_min_hours_per_day(self, niveau_id, classe_id):
+        """Return max of min hours per day from constraints."""
+        min_h = 0
+        for c in self.global_constraints:
+            if c.type_contrainte == 'HEURES_MIN_JOUR' and c.valeur:
+                min_h = max(min_h, int(c.valeur))
+        for c in self.niveau_constraints.get(niveau_id, []):
+            if c.type_contrainte == 'HEURES_MIN_JOUR' and c.valeur:
+                min_h = max(min_h, int(c.valeur))
+        for c in self.classe_constraints.get(classe_id, []):
+            if c.type_contrainte == 'HEURES_MIN_JOUR' and c.valeur:
+                min_h = max(min_h, int(c.valeur))
+        return min_h
 
     def check_teacher_available(self, enseignant_id, day, start, end):
-        """Check if teacher is available at given time slot."""
         dispos = DisponibiliteEnseignant.objects.filter(
-            enseignant_id=enseignant_id,
-            jour_semaine=day,
-        )
-        # Default: teacher is available unless marked unavailable
+            enseignant_id=enseignant_id, jour_semaine=day)
         indispos = dispos.filter(est_disponible=False)
         for ind in indispos:
-            if self._times_overlap(start, end, ind.heure_debut, ind.heure_fin):
+            if self._overlap(start, end, ind.heure_debut, ind.heure_fin):
                 return False
-        # If disponibilities exist, teacher is only available during those times
         dispos_positives = dispos.filter(est_disponible=True)
         if dispos_positives.exists():
             return any(
-                self._time_within(start, end, d.heure_debut, d.heure_fin)
+                self._within(start, end, d.heure_debut, d.heure_fin)
                 for d in dispos_positives
             )
         return True
 
     def check_room_available(self, salle_id, day, start, end):
-        """Check if room is available."""
         if not salle_id:
             return True
         dispos = DisponibiliteSalle.objects.filter(
-            salle_id=salle_id,
-            jour_semaine=day,
-        )
-        indispos = dispos.filter(est_disponible=False)
-        for ind in indispos:
-            if self._times_overlap(start, end, ind.heure_debut, ind.heure_fin):
+            salle_id=salle_id, jour_semaine=day)
+        for ind in dispos.filter(est_disponible=False):
+            if self._overlap(start, end, ind.heure_debut, ind.heure_fin):
                 return False
-        # Check no other course uses this room at this time
         conflicting = Cours.objects.filter(
-            salle_id=salle_id,
-            jour_semaine=day,
-            heure_debut__lt=end,
-            heure_fin__gt=start,
+            salle_id=salle_id, jour_semaine=day,
+            heure_debut__lt=end, heure_fin__gt=start,
         )
         return not conflicting.exists()
 
+    def check_class_available(self, classe_id, day, start, end, version_id):
+        conflicting = Cours.objects.filter(
+            classe_id=classe_id, jour_semaine=day, version_id=version_id,
+            heure_debut__lt=end, heure_fin__gt=start,
+        )
+        return not conflicting.exists()
+
+    def check_level_constraints(self, classe_id, niveau_id, day, start, end):
+        for c in self.global_constraints:
+            if not self._check_single(c, classe_id, niveau_id, day, start, end):
+                return False
+        for c in self.niveau_constraints.get(niveau_id, []):
+            if not self._check_single(c, classe_id, niveau_id, day, start, end):
+                return False
+        for c in self.classe_constraints.get(classe_id, []):
+            if not self._check_single(c, classe_id, niveau_id, day, start, end):
+                return False
+        return True
+
+    def _check_single(self, c, classe_id, niveau_id, day, start, end):
+        if c.jour_semaine is not None and c.jour_semaine != day:
+            return True
+        t = c.type_contrainte
+        if t in ('INDISP_CLASSE', 'INDISP_NIVEAU'):
+            if c.heure_limite:
+                # heure_limite = début de l'indisponibilité (jusqu'à 18h)
+                if self._overlap(start, end, c.heure_limite, time(18, 0)):
+                    return False
+            else:
+                return False  # indisponible toute la journée
+        elif t == 'INTERDICT_DERN_HEURE':
+            # blocked if the slot is the very last possible (18:00)
+            if end == time(18, 0):
+                return False
+        elif t == 'MAT_APMIDI_ONLY':
+            if start < time(14, 0):
+                return False
+        elif t == 'MAT_MATIN_ONLY':
+            if start >= time(14, 0):
+                return False
+        elif t == 'PAS_COURS_APRES':
+            if c.heure_limite:
+                if start >= c.heure_limite or end > c.heure_limite:
+                    return False
+        elif t == 'FIN_AVANCEE':
+            # Already handled via slot filtering; still block if slot violates
+            if c.heure_limite and end > c.heure_limite:
+                return False
+        return True
+
     def check_computer_room_unique(self, salle_id, day, start, end):
-        """Specific check for the unique computer room."""
         if not salle_id:
             return True
         try:
@@ -123,86 +227,34 @@ class ConstraintChecker:
             return True
         return self.check_room_available(salle_id, day, start, end)
 
-    def check_class_available(self, classe_id, day, start, end, version_id):
-        """Check class has no other course at this time."""
-        conflicting = Cours.objects.filter(
-            classe_id=classe_id,
-            jour_semaine=day,
-            version_id=version_id,
-            heure_debut__lt=end,
-            heure_fin__gt=start,
-        )
-        return not conflicting.exists()
-
-    def check_level_constraints(self, classe_id, niveau_id, day, start, end):
-        """Check level-specific constraints."""
-        for c in self.niveau_constraints.get(niveau_id, []):
-            if not self._check_single_constraint(c, classe_id, niveau_id, day, start, end):
-                return False
-        for c in self.classe_constraints.get(classe_id, []):
-            if not self._check_single_constraint(c, classe_id, niveau_id, day, start, end):
-                return False
-        return True
-
-    def _check_single_constraint(self, c, classe_id, niveau_id, day, start, end):
-        if c.jour_semaine is not None and c.jour_semaine != day:
-            return True
-        if c.type_contrainte == 'INDISP_CLASSE' or c.type_contrainte == 'INDISP_NIVEAU':
-            # Whole day or time range unavailability
-            if c.heure_limite:
-                if self._times_overlap(start, end, time(7, 0), c.heure_limite):
-                    return False
-            else:
-                return False
-        elif c.type_contrainte == 'INTERDICT_DERN_HEURE':
-            if end == time(18, 0):
-                return False
-        elif c.type_contrainte == 'MAT_APMIDI_ONLY':
-            if start < time(14, 0):
-                return False
-        elif c.type_contrainte == 'MAT_MATIN_ONLY':
-            if start >= time(14, 0):
-                return False
-        elif c.type_contrainte == 'PAS_COURS_APRES':
-            if c.heure_limite and start >= c.heure_limite:
-                return False
-        return True
-
     def check_teacher_preferences(self, enseignant_id, start):
-        """Check teacher preferences (soft constraint)."""
         try:
-            enseignant = Enseignant.objects.get(id=enseignant_id)
-            if enseignant.prefere_eviter_apres_16h and start >= time(16, 0):
+            ens = Enseignant.objects.get(id=enseignant_id)
+            if ens.prefere_eviter_apres_16h and start >= time(16, 0):
                 return False
         except Enseignant.DoesNotExist:
             pass
         return True
 
-    def check_spread_constraint(self, classe_id, matiere_id, day, start, end, version_id):
-        """Avoid too many consecutive hours of same subject for a class."""
-        # Check if same subject already has a course on same day
+    def check_spread_constraint(self, classe_id, matiere_id, day, version_id):
+        """Allow same subject to repeat across days, but max 2h consecutive per day."""
         existing = Cours.objects.filter(
-            classe_id=classe_id,
-            matiere_id=matiere_id,
-            jour_semaine=day,
-            version_id=version_id,
+            classe_id=classe_id, matiere_id=matiere_id,
+            jour_semaine=day, version_id=version_id,
         )
-        if existing.exists():
-            # If already 2+ hours of same subject on same day, prefer not to add more
-            total_hours = sum(hours_between(c.heure_debut, c.heure_fin) for c in existing)
-            if total_hours >= 3:
-                return False
-        return True
+        total = sum(hours_between(c.heure_debut, c.heure_fin) for c in existing)
+        return total < 2  # max 2h of same subject per day
 
-    def _times_overlap(self, start1, end1, start2, end2):
-        return start1 < end2 and start2 < end1
+    def _overlap(self, s1, e1, s2, e2):
+        return s1 < e2 and s2 < e1
 
-    def _time_within(self, start, end, slot_start, slot_end):
-        return start >= slot_start and end <= slot_end
+    def _within(self, s, e, slot_s, slot_e):
+        return s >= slot_s and e <= slot_e
 
+
+# ── Schedule Generator ──────────────────────────────────────────────────
 
 class ScheduleGenerator:
-    """Main schedule generator using CSP with backtracking and heuristics."""
 
     def __init__(self):
         self.checker = ConstraintChecker()
@@ -212,43 +264,32 @@ class ScheduleGenerator:
         self.checker.load_constraints()
         self.version = version
 
-        # Clear existing courses for this version (except locked ones)
         Cours.objects.filter(version=version, est_verrouille=False).delete()
 
-        # Gather all teaching assignments
+        # Pre-compute early-finish days per assignment
         assignments = self._get_assignments()
-
-        # Sort by difficulty (most constrained first)
+        self._enrich_assignments(assignments)
         assignments = self._sort_by_difficulty(assignments)
-
-        slots = slots_per_week()
-        random.shuffle(slots)
 
         created = 0
         conflicts = []
 
         for assignment in assignments:
-            success = self._assign_course(assignment, slots, version)
+            success = self._assign_course(assignment, version)
             if success:
                 created += 1
             else:
                 conflicts.append(f"{assignment['classe'].nom} - {assignment['matiere'].nom}")
 
-        # Calculate quality score
         score = self._calculate_score(version)
-
-        # Update version
         version.score_qualite = score
         version.save()
 
-        return {
-            'cours_crees': created,
-            'conflits': conflicts,
-            'score': score,
-        }
+        return {'cours_crees': created, 'conflits': conflicts, 'score': score}
+
+    # ── Assignment helpers ────────────────────────────────────────────
 
     def _get_assignments(self):
-        """Get all teaching assignments that need scheduling."""
         assignments = []
         for cm in ClasseMatiere.objects.select_related('classe', 'matiere', 'enseignant').all():
             if not cm.enseignant:
@@ -262,102 +303,159 @@ class ScheduleGenerator:
             })
         return assignments
 
+    def _enrich_assignments(self, assignments):
+        """Attach early-finish map per assignment."""
+        for a in assignments:
+            a['early_finish'] = self.checker.get_early_finish_days(
+                a['classe'].niveau_id, a['classe'].id)
+            a['min_hours_per_day'] = self.checker.get_min_hours_per_day(
+                a['classe'].niveau_id, a['classe'].id)
+            a['required_room'] = self._find_required_room(a['matiere'])
+
     def _sort_by_difficulty(self, assignments):
-        """Sort assignments by difficulty (most constrained first)."""
         def difficulty(a):
             score = 0
-            # Fewer available slots = higher difficulty
             teacher_dispos = DisponibiliteEnseignant.objects.filter(
-                enseignant=a['enseignant']
-            )
+                enseignant=a['enseignant'])
             if teacher_dispos.filter(est_disponible=True).exists():
                 score -= teacher_dispos.count() * 10
-            # Computer room subjects are harder
             if a['matiere'].necessite_salle_informatique:
                 score -= 50
-            # More hours = harder
             score -= a['heures'] * 5
             return score
-
         return sorted(assignments, key=difficulty)
 
-    def _assign_course(self, assignment, slots, version):
-        """Try to assign a course to available slots."""
+    # ── Core assignment ────────────────────────────────────────────────
+
+    def _assign_course(self, assignment, version):
         heures_needed = assignment['heures']
         heures_assigned = 0
-        slots_used = []
+        slots_used = set()
+        days_used = defaultdict(float)  # hours already assigned per day
 
         classe = assignment['classe']
         matiere = assignment['matiere']
         enseignant = assignment['enseignant']
+        early_finish = assignment['early_finish']
+        required_room = assignment['required_room']
 
-        # Determine required room type
-        required_room = self._find_required_room(matiere)
+        # Generate available 1h slots (respecting early-finish)
+        all_slots = slots_per_week(early_finish)
+        random.shuffle(all_slots)
 
-        for day, start, end in slots:
+        for day, start, end in all_slots:
             if heures_assigned >= heures_needed:
                 break
 
-            slot_key = (day, start, end)
+            slot_key = slot_to_tuple((day, start, end))
             if slot_key in slots_used:
                 continue
 
-            # Check breaks
-            if self._is_break(start, end):
+            if is_break(start, end):
                 continue
 
-            # Check class availability
             if not self.checker.check_class_available(classe.id, day, start, end, version.id):
                 continue
 
-            # Check teacher availability
             if not self.checker.check_teacher_available(enseignant.id, day, start, end):
                 continue
 
-            # Check teacher preferences (soft - skip if violated but prefer others)
             if not self.checker.check_teacher_preferences(enseignant.id, start):
-                # Try other slots first, but use this as fallback
                 if random.random() > 0.3:
                     continue
 
-            # Check constraints
             if not self.checker.check_level_constraints(classe.id, classe.niveau_id, day, start, end):
                 continue
 
-            if not self.checker.check_spread_constraint(classe.id, matiere.id, day, start, end, version.id):
-                continue
-
-            # Find suitable room
+            # Check room
             salle = self._find_available_room(matiere, required_room, day, start, end, classe.effectif)
             if required_room and not salle:
                 continue
             if salle and not self.checker.check_computer_room_unique(salle.id, day, start, end):
                 continue
 
-            # Assign the course
-            slot_hours = hours_between(start, end)
-            if heures_assigned + slot_hours > heures_needed:
+            # ── Try to assign this 1h block + consecutive blocks ──────
+            # Determine how many consecutive 1h blocks we can take
+            blocks_needed = int(heures_needed - heures_assigned)
+            blocks = self._find_consecutive_blocks(
+                day, start, end, blocks_needed, all_slots, slots_used, version,
+                classe, enseignant, matiere, salle, early_finish,
+            )
+            if not blocks:
+                continue
+
+            # Assign all blocks as a single course session
+            block_start = blocks[0][1]
+            block_end = blocks[-1][2]
+
+            # Check spread: allow max 2h same subject per day
+            if not self.checker.check_spread_constraint(classe.id, matiere.id, day, version.id):
+                continue
+
+            # Check min hours: don't let this assignment exceed reasonable daily load
+            existing_day_h = days_used[day]
+            total_block_h = len(blocks)
+            if existing_day_h + total_block_h > 6:  # cap at 6h/day
                 continue
 
             Cours.objects.create(
-                classe=classe,
-                matiere=matiere,
-                enseignant=enseignant,
-                salle=salle,
-                version=version,
-                jour_semaine=day,
-                heure_debut=start,
-                heure_fin=end,
+                classe=classe, matiere=matiere, enseignant=enseignant,
+                salle=salle, version=version, jour_semaine=day,
+                heure_debut=block_start, heure_fin=block_end,
                 est_demi_groupe=assignment.get('est_demi_groupe', False),
             )
 
-            heures_assigned += slot_hours
-            slots_used.append(slot_key)
+            heures_assigned += total_block_h
+            days_used[day] += total_block_h
+            for b in blocks:
+                slots_used.add(slot_to_tuple(b))
 
         return heures_assigned > 0
 
+    def _find_consecutive_blocks(self, day, start, end, max_blocks, all_slots, slots_used,
+                                  version, classe, enseignant, matiere, salle, early_finish):
+        """Find consecutive 1h blocks starting from (day, start, end)."""
+        # Find the index of the starting slot
+        start_idx = None
+        for i, (d, s, e) in enumerate(all_slots):
+            if d == day and s == start and e == end:
+                start_idx = i
+                break
+        if start_idx is None:
+            return []
+
+        blocks = [(day, start, end)]
+        for i in range(start_idx + 1, min(start_idx + max_blocks, len(all_slots))):
+            d, s, e = all_slots[i]
+            if d != day:
+                break
+            if is_break(s, e):
+                break
+            if slot_to_tuple((d, s, e)) in slots_used:
+                break
+            # Check early finish
+            ef = early_finish.get(day, len(SUB_SLOTS) - 1)
+            for idx, (h1, m1, h2, m2) in enumerate(SUB_SLOTS):
+                if mk_time(h1, m1) == s and idx > ef:
+                    return blocks
+            # Check constraints for the cumulative block
+            cum_start = blocks[0][1]
+            cum_end = e
+            if not self.checker.check_class_available(classe.id, day, cum_start, cum_end, version.id):
+                break
+            if not self.checker.check_teacher_available(enseignant.id, day, cum_start, cum_end):
+                break
+            if not self.checker.check_level_constraints(classe.id, classe.niveau_id, day, cum_start, cum_end):
+                break
+            if salle and not self.checker.check_computer_room_unique(salle.id, day, cum_start, cum_end):
+                break
+            blocks.append((d, s, e))
+
+        return blocks
+
+    # ── Room helpers ───────────────────────────────────────────────────
+
     def _find_required_room(self, matiere):
-        """Determine the required room type for a subject."""
         if matiere.necessite_salle_informatique:
             return 'INFORMATIQUE'
         if matiere.necessite_laboratoire:
@@ -367,26 +465,18 @@ class ScheduleGenerator:
         return None
 
     def _find_available_room(self, matiere, room_type, day, start, end, effectif):
-        """Find an available room that fits the requirements."""
         if room_type:
             rooms = Salle.objects.filter(type=room_type, capacite__gte=effectif)
         else:
             rooms = Salle.objects.filter(capacite__gte=effectif)
-
         for room in rooms:
             if self.checker.check_room_available(room.id, day, start, end):
                 return room
         return None
 
-    def _is_break(self, start, end):
-        """Check if a time slot overlaps with break times."""
-        for break_start, break_end in BREAKS:
-            if start < break_end and end > break_start:
-                return True
-        return False
+    # ── Quality score ──────────────────────────────────────────────────
 
     def _calculate_score(self, version):
-        """Calculate quality score (0-100) for the generated schedule."""
         courses = Cours.objects.filter(version=version)
         if not courses.exists():
             return 0
@@ -394,7 +484,7 @@ class ScheduleGenerator:
         score = 100.0
         deductions = []
 
-        # 1. Check teacher preferences
+        # 1. Teacher preferences
         for c in courses:
             if c.enseignant_id:
                 try:
@@ -404,86 +494,85 @@ class ScheduleGenerator:
                 except Enseignant.DoesNotExist:
                     pass
 
-        # 2. Check gaps (trous)
+        # 2. Gaps (trous)
         for classe_id in set(c.classe_id for c in courses):
-            class_courses = courses.filter(classe_id=classe_id)
+            cc = courses.filter(classe_id=classe_id)
             for day in DAYS:
-                day_courses = sorted(
-                    [c for c in class_courses if c.jour_semaine == day],
-                    key=lambda x: x.heure_debut
-                )
-                for i in range(len(day_courses) - 1):
-                    gap = hours_between(day_courses[i].heure_fin, day_courses[i+1].heure_debut)
-                    if 0.25 < gap < 2:  # Gap > 15min and < 2h
+                day_c = sorted([c for c in cc if c.jour_semaine == day], key=lambda x: x.heure_debut)
+                for i in range(len(day_c) - 1):
+                    gap = hours_between(day_c[i].heure_fin, day_c[i+1].heure_debut)
+                    if 0.25 < gap < 2:
                         deductions.append(1.5)
 
-        # 3. Check balance
+        # 3. Balance + min hours per day
         for classe_id in set(c.classe_id for c in courses):
-            class_courses = courses.filter(classe_id=classe_id)
+            cc = courses.filter(classe_id=classe_id)
             hours_per_day = defaultdict(float)
             for day in DAYS:
-                for c in class_courses.filter(jour_semaine=day):
+                for c in cc.filter(jour_semaine=day):
                     hours_per_day[day] += hours_between(c.heure_debut, c.heure_fin)
             if hours_per_day:
                 avg = sum(hours_per_day.values()) / max(len(hours_per_day), 1)
                 for h in hours_per_day.values():
-                    if abs(h - avg) > 3:
+                    if abs(h - avg) > 2.5:
                         deductions.append(2)
+            # Minimum hours per day penalty
+            min_h = self.checker.get_min_hours_per_day(
+                cc.first().classe.niveau_id if cc.exists() else None,
+                classe_id,
+            )
+            if min_h > 0:
+                for day in DAYS:
+                    if hours_per_day.get(day, 0) < min_h and hours_per_day.get(day, 0) > 0:
+                        penalties = (min_h - hours_per_day[day]) * 1.5
+                        deductions.append(penalties)
 
-        # 4. Check consecutive same subject
+        # 4. Consecutive same subject
         for classe_id in set(c.classe_id for c in courses):
-            class_courses = list(courses.filter(classe_id=classe_id))
+            cc = list(courses.filter(classe_id=classe_id))
             for day in DAYS:
-                day_courses = sorted(
-                    [c for c in class_courses if c.jour_semaine == day],
-                    key=lambda x: x.heure_debut
-                )
-                for i in range(len(day_courses) - 1):
-                    if (day_courses[i].matiere_id == day_courses[i+1].matiere_id and
-                            day_courses[i].heure_fin == day_courses[i+1].heure_debut):
+                day_c = sorted([c for c in cc if c.jour_semaine == day], key=lambda x: x.heure_debut)
+                for i in range(len(day_c) - 1):
+                    if (day_c[i].matiere_id == day_c[i+1].matiere_id and
+                            day_c[i].heure_fin == day_c[i+1].heure_debut):
                         deductions.append(1)
-
-        # 5. Room optimization
-        for c in courses:
-            if c.salle and c.salle.capacite > c.classe.effectif * 2:
-                deductions.append(1)  # Room too large for class
 
         total_deduction = min(sum(deductions), 100)
         score = max(0, 100 - total_deduction)
         return round(score, 1)
 
-    def optimize(self, version, iterations=100):
-        """Simple optimization pass using simulated annealing."""
-        current_score = version.score_qualite or self._calculate_score(version)
+    # ── Optimizer ──────────────────────────────────────────────────────
 
-        for i in range(iterations):
-            # Pick a random course and try to move it
+    def optimize(self, version, iterations=100):
+        current_score = version.score_qualite or self._calculate_score(version)
+        for _ in range(iterations):
             courses = list(Cours.objects.filter(version=version, est_verrouille=False))
             if not courses:
                 break
             course = random.choice(courses)
             old_day = course.jour_semaine
             old_start = course.heure_debut
-            old_end = course.heure_fin
 
-            # Try new random slot
-            slots = slots_per_week()
+            # Determine early finish for this course
+            ef = self.checker.get_early_finish_days(
+                course.classe.niveau_id, course.classe.id)
+            slots = slots_per_week(ef)
             random.shuffle(slots)
+
             for day, start, end in slots:
                 if day == old_day and start == old_start:
                     continue
-                if self._is_break(start, end):
+                if is_break(start, end):
                     continue
                 if not self.checker.check_class_available(
-                    course.classe_id, day, start, end, version.id
+                    course.classe_id, day, start, end, version.id,
                 ):
                     continue
                 if not self.checker.check_teacher_available(
-                    course.enseignant_id, day, start, end
+                    course.enseignant_id, day, start, end,
                 ):
                     continue
 
-                # Apply the move
                 course.jour_semaine = day
                 course.heure_debut = start
                 course.heure_fin = end
@@ -494,10 +583,8 @@ class ScheduleGenerator:
                     current_score = new_score
                     break
                 else:
-                    # Revert
                     course.jour_semaine = old_day
                     course.heure_debut = old_start
-                    course.heure_fin = old_end
                     break
 
         version.score_qualite = current_score
