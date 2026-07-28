@@ -1,11 +1,9 @@
 import random
 from django.core.management.base import BaseCommand
-from django.contrib.auth.models import User
 from apps.classes.models import Niveau, Filiere, Classe
 from apps.subjects.models import Matiere, ClasseMatiere
 from apps.teachers.models import Enseignant, DisponibiliteEnseignant, EnseignantClasse
-from apps.rooms.models import Salle, DisponibiliteSalle
-from apps.constraints.models import ContrainteSpecifique
+from apps.rooms.models import Salle
 from apps.schedules.models import ScheduleVersion
 from datetime import time
 
@@ -16,12 +14,11 @@ class Command(BaseCommand):
     def handle(self, *args, **options):
         self._create_niveaux()
         self._create_filieres()
+        self._create_salles()
         self._create_classes()
         self._create_matieres()
-        self._create_salles()
         self._create_enseignants()
         self._assign_teachers_to_classes()
-        self._create_constraints()
         self._create_schedule_version()
         self.stdout.write(self.style.SUCCESS('Seed data created successfully!'))
 
@@ -47,13 +44,9 @@ class Command(BaseCommand):
         for nom, niveau_nom, filiere_nom, effectif in data:
             niveau = Niveau.objects.get(nom=niveau_nom)
             filiere = Filiere.objects.get(nom=filiere_nom)
-            Classe.objects.get_or_create(
+            Classe.objects.update_or_create(
                 nom=nom,
-                defaults={
-                    'niveau': niveau,
-                    'filiere': filiere,
-                    'effectif': effectif,
-                }
+                defaults={'niveau': niveau, 'filiere': filiere, 'effectif': effectif},
             )
         self.stdout.write('  ✓ Classes created')
 
@@ -178,6 +171,14 @@ class Command(BaseCommand):
         for ens in Enseignant.objects.all():
             if ens.matiere:
                 ClasseMatiere.objects.filter(matiere=ens.matiere, enseignant__isnull=True).update(enseignant=ens)
+        # TPINformatique → INFO teachers
+        tpinfo = Matiere.objects.get(code='TPINFO')
+        for ens in Enseignant.objects.filter(matiere__code='INFO'):
+            ClasseMatiere.objects.filter(matiere=tpinfo, enseignant__isnull=True).update(enseignant=ens)
+        # Atelier → teacher Électricité
+        atelier = Matiere.objects.get(code='ATEL')
+        for ens in Enseignant.objects.filter(matiere__code='ELEC'):
+            ClasseMatiere.objects.filter(matiere=atelier, enseignant__isnull=True).update(enseignant=ens)
 
         # Assign teachers to classes (EnseignantClasse)
         classes = list(Classe.objects.all())
@@ -190,53 +191,6 @@ class Command(BaseCommand):
         if remaining:
             self.stdout.write(self.style.WARNING(f'  ⚠ {remaining} matières sans enseignant'))
         self.stdout.write('  ✓ Teachers assigned to classes')
-
-    def _create_constraints(self):
-        # ── Secondes : pas de cours mercredi après-midi ──
-        seconde = Niveau.objects.get(nom='Seconde')
-        ContrainteSpecifique.objects.get_or_create(
-            niveau=seconde,
-            type_contrainte='INDISP_NIVEAU',
-            jour_semaine=2,
-            heure_limite=time(12, 0),
-            description="Les Secondes ne travaillent pas le mercredi après-midi",
-        )
-        # ── Vendredi : tous finissent à 17h au lieu de 18h ──
-        # S'applique à tous les niveaux (créé sans niveau ni classe)
-        ContrainteSpecifique.objects.get_or_create(
-            type_contrainte='FIN_AVANCEE',
-            jour_semaine=4,
-            heure_limite=time(17, 0),
-            defaults={'description': 'Tous les cours finissent le vendredi à 17h'},
-        )
-        # ── Heures minimum par jour (4h min) ──
-        ContrainteSpecifique.objects.get_or_create(
-            type_contrainte='HEURES_MIN_JOUR',
-            valeur=4,
-            defaults={'description': 'Minimum 4h de cours par jour'},
-        )
-        # ── Les Premières n'ont pas cours après 17h le vendredi (cumul avec le général) ──
-        premiere = Niveau.objects.get(nom='Première')
-        ContrainteSpecifique.objects.get_or_create(
-            niveau=premiere,
-            type_contrainte='PAS_COURS_APRES',
-            jour_semaine=4,
-            heure_limite=time(17, 0),
-            description="Les Premières finissent le vendredi à 17h",
-        )
-        # ── Salle informatique : maintenance jeudi après-midi ──
-        salle_info = Salle.objects.get(type='INFORMATIQUE')
-        DisponibiliteSalle.objects.get_or_create(
-            salle=salle_info,
-            jour_semaine=3,
-            heure_debut=time(14, 0),
-            heure_fin=time(18, 0),
-            defaults={
-                'est_disponible': False,
-                'motif': 'Maintenance',
-            }
-        )
-        self.stdout.write('  ✓ Constraints created')
 
     def _create_schedule_version(self):
         ScheduleVersion.objects.get_or_create(

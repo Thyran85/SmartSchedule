@@ -135,6 +135,8 @@ class ConstraintChecker:
         for c in self.classe_constraints.get(classe_id, []):
             if c.type_contrainte == 'HEURES_MIN_JOUR' and c.valeur:
                 min_h = max(min_h, int(c.valeur))
+        if min_h == 0:
+            min_h = 4  # default minimum hours per day
         return min_h
 
     def check_teacher_available(self, enseignant_id, day, start, end):
@@ -189,27 +191,18 @@ class ConstraintChecker:
         if c.jour_semaine is not None and c.jour_semaine != day:
             return True
         t = c.type_contrainte
-        if t in ('INDISP_CLASSE', 'INDISP_NIVEAU'):
+        if t == 'INDISP_NIVEAU':
             if c.heure_limite:
                 # heure_limite = début de l'indisponibilité (jusqu'à 18h)
                 if self._overlap(start, end, c.heure_limite, time(18, 0)):
                     return False
             else:
                 return False  # indisponible toute la journée
-        elif t == 'INTERDICT_DERN_HEURE':
-            # blocked if the slot is the very last possible (18:00)
-            if end == time(18, 0):
-                return False
-        elif t == 'MAT_APMIDI_ONLY':
-            if start < time(14, 0):
-                return False
-        elif t == 'MAT_MATIN_ONLY':
-            if start >= time(14, 0):
-                return False
-        elif t == 'PAS_COURS_APRES':
-            if c.heure_limite:
-                if start >= c.heure_limite or end > c.heure_limite:
-                    return False
+        elif t == 'MAT_PERIODE':
+            if c.valeur == 0 and start >= time(14, 0):
+                return False  # matin only
+            if c.valeur == 1 and start < time(14, 0):
+                return False  # après-midi only
         elif t == 'FIN_AVANCEE':
             # Already handled via slot filtering; still block if slot violates
             if c.heure_limite and end > c.heure_limite:
@@ -312,6 +305,7 @@ class ScheduleGenerator:
                 a['classe'].niveau_id, a['classe'].id)
             a['required_room'] = self._find_required_room(a['matiere'])
 
+
     def _sort_by_difficulty(self, assignments):
         def difficulty(a):
             score = 0
@@ -376,7 +370,7 @@ class ScheduleGenerator:
 
             # ── Try to assign this 1h block + consecutive blocks ──────
             # Determine how many consecutive 1h blocks we can take
-            blocks_needed = int(heures_needed - heures_assigned)
+            blocks_needed = min(int(heures_needed - heures_assigned), 5)
             blocks = self._find_consecutive_blocks(
                 day, start, end, blocks_needed, all_slots, slots_used, version,
                 classe, enseignant, matiere, salle, early_finish,
@@ -468,7 +462,7 @@ class ScheduleGenerator:
         if room_type:
             rooms = Salle.objects.filter(type=room_type, capacite__gte=effectif)
         else:
-            rooms = Salle.objects.filter(capacite__gte=effectif)
+            rooms = Salle.objects.filter(type='NORMALE', capacite__gte=effectif)
         for room in rooms:
             if self.checker.check_room_available(room.id, day, start, end):
                 return room
@@ -536,6 +530,23 @@ class ScheduleGenerator:
                     if (day_c[i].matiere_id == day_c[i+1].matiere_id and
                             day_c[i].heure_fin == day_c[i+1].heure_debut):
                         deductions.append(1)
+
+        # 5. Lab usage: encourage at least 1h lab per class that has lab subjects
+        for classe_id in set(c.classe_id for c in courses):
+            cc = courses.filter(classe_id=classe_id)
+            classe = Classe.objects.get(id=classe_id)
+            has_lab_subjects = any(
+                cm.matiere.necessite_laboratoire
+                for cm in ClasseMatiere.objects.filter(classe=classe).select_related('matiere')
+            )
+            if not has_lab_subjects:
+                continue
+            lab_hours = sum(
+                hours_between(c.heure_debut, c.heure_fin)
+                for c in cc if c.salle and c.salle.type == 'LABORATOIRE'
+            )
+            if lab_hours < 1:
+                deductions.append(5)
 
         total_deduction = min(sum(deductions), 100)
         score = max(0, 100 - total_deduction)

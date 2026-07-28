@@ -170,14 +170,9 @@ export const SUBJECT_TYPES: Record<string, string> = {
 };
 
 export const CONSTRAINT_TYPES: Record<string, string> = {
-  INDISP_CLASSE: 'Indisponibilité classe',
   INDISP_NIVEAU: 'Indisponibilité niveau',
-  INTERDICT_DERN_HEURE: 'Matière interdite en dernière heure',
-  MAT_APMIDI_ONLY: 'Matière uniquement après-midi',
-  MAT_MATIN_ONLY: 'Matière uniquement le matin',
+  MAT_PERIODE: 'Matière en période spécifique',
   MAX_HEURES_CONSEC: 'Max heures consécutives',
-  SPORT_APMIDI: 'Sport uniquement après-midi',
-  PAS_COURS_APRES: 'Pas de cours après',
   FIN_AVANCEE: 'Fin des cours avancée',
   HEURES_MIN_JOUR: 'Heures minimum par jour',
 };

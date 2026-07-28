@@ -31,6 +31,7 @@ class Classe(models.Model):
     filiere = models.ForeignKey(Filiere, on_delete=models.SET_NULL, null=True, related_name='classes')
     effectif = models.IntegerField()
 
+
     class Meta:
         verbose_name = "Classe"
         verbose_name_plural = "Classes"

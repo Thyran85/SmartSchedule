@@ -124,6 +124,8 @@ export const contraintesApi = {
   list: () => api.get<PaginatedResponse<ContrainteSpecifique>>('/constraints/contraintes/'),
   create: (d: Partial<ContrainteSpecifique>) =>
     api.post<ContrainteSpecifique>('/constraints/contraintes/', d),
+  update: (id: number, d: Partial<ContrainteSpecifique>) =>
+    api.put<ContrainteSpecifique>(`/constraints/contraintes/${id}/`, d),
   delete: (id: number) => api.delete(`/constraints/contraintes/${id}/`),
 };
 
