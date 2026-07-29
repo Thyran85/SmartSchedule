@@ -136,7 +136,7 @@ class ConstraintChecker:
             if c.type_contrainte == 'HEURES_MIN_JOUR' and c.valeur:
                 min_h = max(min_h, int(c.valeur))
         if min_h == 0:
-            min_h = 4  # default minimum hours per day
+            min_h = 9  # default minimum hours per day
         return min_h
 
     def check_teacher_available(self, enseignant_id, day, start, end):
@@ -389,7 +389,7 @@ class ScheduleGenerator:
             # Check min hours: don't let this assignment exceed reasonable daily load
             existing_day_h = days_used[day]
             total_block_h = len(blocks)
-            if existing_day_h + total_block_h > 6:  # cap at 6h/day
+            if existing_day_h + total_block_h > 9:  # cap at 9h/day
                 continue
 
             Cours.objects.create(

@@ -9,7 +9,7 @@ Ces règles s'appliquent toujours, sans configuration :
 | **Début à 7h** | Tous les cours commencent à 7h (premier créneau). |
 | **Pauses** | Créneaux inférieurs à 1h (10h00-10h15, 16h00-16h15) → bloqués. |
 | **Max 5h consécutives** | Une même matière ne peut pas dépasser 5 créneaux d'affilée. |
-| **Min 4h/jour** | Minimum 4h de cours par jour (par défaut, sauf si une contrainte `HEURES_MIN_JOUR` est ajoutée). |
+| **Min 9h/jour** | Minimum 9h de cours par jour (par défaut, sauf si une contrainte `HEURES_MIN_JOUR` est ajoutée). Les jours avec 0h (ex: mercredi après-midi libre) sont ignorés. |
 
 ## Contraintes configurables (via l'interface)
 
