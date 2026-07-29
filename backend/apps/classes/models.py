@@ -30,6 +30,7 @@ class Classe(models.Model):
     niveau = models.ForeignKey(Niveau, on_delete=models.CASCADE, related_name='classes')
     filiere = models.ForeignKey(Filiere, on_delete=models.SET_NULL, null=True, related_name='classes')
     effectif = models.IntegerField()
+    classe_technique = models.ForeignKey('self', on_delete=models.SET_NULL, null=True, blank=True, related_name='classes_generales', help_text="Classe technique associée pour les cours communs")
 
 
     class Meta:

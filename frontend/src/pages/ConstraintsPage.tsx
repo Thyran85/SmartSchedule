@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Plus, Pencil, Trash2 } from 'lucide-react';
-import { contraintesApi, niveauxApi, classesApi, matieresApi } from '../services/api';
-import type { ContrainteSpecifique, Niveau, Classe, Matiere } from '../types';
+import { contraintesApi, niveauxApi, classesApi, matieresApi, sallesApi } from '../services/api';
+import type { ContrainteSpecifique, Niveau, Classe, Matiere, Salle } from '../types';
 import { CONSTRAINT_TYPES, DAYS } from '../types';
 import Modal from '../components/Modal';
 
@@ -10,15 +10,16 @@ export default function ConstraintsPage() {
   const [niveaux, setNiveaux] = useState<Niveau[]>([]);
   const [classes, setClasses] = useState<Classe[]>([]);
   const [matieres, setMatieres] = useState<Matiere[]>([]);
+  const [salles, setSalles] = useState<Salle[]>([]);
   const [editing, setEditing] = useState<ContrainteSpecifique | null>(null);
   const [modalOpen, setModalOpen] = useState(false);
   const [form, setForm] = useState({
-    type_contrainte: 'INDISP_CLASSE', classe: '', niveau: '',
-    matiere: '', jour_semaine: '', valeur: '',
+    type_contrainte: 'INDISP_NIVEAU', classe: '', niveau: '',
+    matiere: '', salle: '', jour_semaine: '', valeur: '',
     description: '',
   });
 
-  const isTimeType = (t: string) => ['FIN_AVANCEE', 'INDISP_NIVEAU'].includes(t);
+  const isTimeType = (t: string) => ['FIN_AVANCEE', 'INDISP_NIVEAU', 'INDISP_SALLE'].includes(t);
   const isNumericType = (t: string) => ['HEURES_MIN_JOUR', 'MAX_HEURES_CONSEC'].includes(t);
   const isPeriodType = (t: string) => t === 'MAT_PERIODE';
 
@@ -27,13 +28,14 @@ export default function ConstraintsPage() {
     niveauxApi.list().then(r => setNiveaux(r.data.results));
     classesApi.list().then(r => setClasses(r.data.results));
     matieresApi.list().then(r => setMatieres(r.data.results));
+    sallesApi.list().then(r => setSalles(r.data.results));
   };
 
   useEffect(load, []);
 
   const openCreate = () => {
     setEditing(null);
-    setForm({ type_contrainte: 'INDISP_CLASSE', classe: '', niveau: '', matiere: '', jour_semaine: '', valeur: '', description: '' });
+    setForm({ type_contrainte: 'INDISP_NIVEAU', classe: '', niveau: '', matiere: '', salle: '', jour_semaine: '', valeur: '', description: '' });
     setModalOpen(true);
   };
 
@@ -44,6 +46,7 @@ export default function ConstraintsPage() {
       classe: String(c.classe || ''),
       niveau: String(c.niveau || ''),
       matiere: String(c.matiere || ''),
+      salle: String(c.salle || ''),
       jour_semaine: String(c.jour_semaine ?? ''),
       valeur: isTimeType(c.type_contrainte)
         ? (c.heure_limite || '')
@@ -60,6 +63,7 @@ export default function ConstraintsPage() {
       classe: form.classe ? Number(form.classe) : null,
       niveau: form.niveau ? Number(form.niveau) : null,
       matiere: form.matiere ? Number(form.matiere) : null,
+      salle: form.salle ? Number(form.salle) : null,
       jour_semaine: form.jour_semaine ? Number(form.jour_semaine) : null,
       description: form.description,
     };
@@ -86,16 +90,17 @@ export default function ConstraintsPage() {
     }
   };
 
-  const showTarget = !['MAX_HEURES_CONSEC', 'MAT_PERIODE', 'HEURES_MIN_JOUR'].includes(form.type_contrainte);
+  const showTarget = !['MAX_HEURES_CONSEC', 'MAT_PERIODE', 'HEURES_MIN_JOUR'].includes(form.type_contrainte) || form.type_contrainte === 'INDISP_SALLE';
 
   const showMatiere = ['MAT_PERIODE', 'MAX_HEURES_CONSEC'].includes(form.type_contrainte);
 
-  const showDay = ['INDISP_NIVEAU', 'FIN_AVANCEE'].includes(form.type_contrainte);
+  const showDay = ['INDISP_NIVEAU', 'INDISP_SALLE', 'FIN_AVANCEE'].includes(form.type_contrainte);
 
   const showValue = isTimeType(form.type_contrainte) || isNumericType(form.type_contrainte) || isPeriodType(form.type_contrainte);
 
   const descPlaceholder = {
     INDISP_NIVEAU: 'Ex: Les Secondes ne travaillent pas le mercredi après-midi',
+    INDISP_SALLE: 'Ex: Laboratoire Physique indisponible le jeudi après-midi',
     FIN_AVANCEE: 'Ex: Les cours finissent à 17h le vendredi',
     HEURES_MIN_JOUR: 'Ex: Minimum 4h de cours par jour',
     MAX_HEURES_CONSEC: 'Ex: Max 2h consécutives de la même matière',
@@ -136,7 +141,9 @@ export default function ConstraintsPage() {
                   </span>
                 </td>
                 <td className="px-4 py-3">
-                  {c.classe
+                  {c.type_contrainte === 'INDISP_SALLE'
+                    ? salles.find(s => s.id === c.salle)?.nom || `Salle #${c.salle}`
+                    : c.classe
                     ? classes.find(cl => cl.id === c.classe)?.nom || `Classe #${c.classe}`
                     : c.niveau
                     ? niveaux.find(n => n.id === c.niveau)?.nom || `Niveau #${c.niveau}`
@@ -185,24 +192,37 @@ export default function ConstraintsPage() {
 
           {showTarget && (
             <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Niveau</label>
-                <select value={form.niveau} onChange={e => setForm(f => ({ ...f, niveau: e.target.value, classe: '' }))}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none">
-                  <option value="">Tous</option>
-                  {niveaux.map(n => <option key={n.id} value={n.id}>{n.nom}</option>)}
-                </select>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Classe</label>
-                  <select value={form.classe} onChange={e => setForm(f => ({ ...f, classe: e.target.value }))}
+              {form.type_contrainte === 'INDISP_SALLE' ? (
+                <div className="col-span-2">
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Salle</label>
+                  <select value={form.salle} onChange={e => setForm(f => ({ ...f, salle: e.target.value }))}
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none">
-                    <option value="">Toutes</option>
-                    {classes
-                      .filter(c => !form.niveau || c.niveau === Number(form.niveau))
-                      .map(c => <option key={c.id} value={c.id}>{c.nom}</option>)}
+                    <option value="">Sélectionner...</option>
+                    {salles.map(s => <option key={s.id} value={s.id}>{s.nom} ({s.type})</option>)}
                   </select>
-              </div>
+                </div>
+              ) : (
+                <>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Niveau</label>
+                    <select value={form.niveau} onChange={e => setForm(f => ({ ...f, niveau: e.target.value, classe: '' }))}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none">
+                      <option value="">Tous</option>
+                      {niveaux.map(n => <option key={n.id} value={n.id}>{n.nom}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Classe</label>
+                      <select value={form.classe} onChange={e => setForm(f => ({ ...f, classe: e.target.value }))}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none">
+                        <option value="">Toutes</option>
+                        {classes
+                          .filter(c => !form.niveau || c.niveau === Number(form.niveau))
+                          .map(c => <option key={c.id} value={c.id}>{c.nom}</option>)}
+                      </select>
+                  </div>
+                </>
+              )}
             </div>
           )}
 

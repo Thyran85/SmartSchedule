@@ -81,7 +81,7 @@ class Command(BaseCommand):
             matieres[code] = mat
         self.stdout.write('  ✓ Matières created')
 
-        # Assign subjects to classes (without teacher, done in _assign_teachers_to_classes)
+        # Assign subjects to classes
         classes = list(Classe.objects.all())
         for cls in classes:
             for code, mat in matieres.items():
@@ -92,6 +92,15 @@ class Command(BaseCommand):
                     matiere=mat,
                     defaults={'heures_par_semaine': mat.heures_par_semaine}
                 )
+        # Link Première D (générale) → Première Technique Électrique (technique)
+        premiere_d = Classe.objects.get(nom='Première D')
+        premiere_tech = Classe.objects.get(nom='Première Technique Électrique')
+        premiere_d.classe_technique = premiere_tech
+        premiere_d.save()
+        # Mark common subjects as est_commun
+        for code in ('FR', 'ANG', 'HG', 'MATH', 'PC'):
+            mat = matieres[code]
+            ClasseMatiere.objects.filter(classe=premiere_d, matiere=mat).update(est_commun=True)
         self.stdout.write('  ✓ Matières assigned to classes')
 
     def _create_salles(self):

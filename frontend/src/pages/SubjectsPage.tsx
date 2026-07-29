@@ -18,7 +18,7 @@ export default function SubjectsPage() {
     type: 'GENERAL', necessite_salle_informatique: false,
     necessite_laboratoire: false, necessite_atelier: false,
   });
-  const [assignForm, setAssignForm] = useState({ classe: '', matiere: '', enseignant: '', heures_par_semaine: '' });
+  const [assignForm, setAssignForm] = useState({ classe: '', matiere: '', enseignant: '', heures_par_semaine: '', est_commun: false });
 
   const load = () => {
     matieresApi.list().then(r => setMatieres(r.data.results));
@@ -70,7 +70,7 @@ export default function SubjectsPage() {
   };
 
   const openAssign = () => {
-    setAssignForm({ classe: '', matiere: '', enseignant: '', heures_par_semaine: '' });
+    setAssignForm({ classe: '', matiere: '', enseignant: '', heures_par_semaine: '', est_commun: false });
     setAssignModalOpen(true);
   };
 
@@ -80,6 +80,7 @@ export default function SubjectsPage() {
       matiere: Number(assignForm.matiere),
       enseignant: Number(assignForm.enseignant),
       heures_par_semaine: Number(assignForm.heures_par_semaine),
+      est_commun: assignForm.est_commun,
     });
     setAssignModalOpen(false);
     load();
@@ -166,6 +167,7 @@ export default function SubjectsPage() {
               <th className="text-left px-4 py-3 text-sm font-medium text-gray-500">Matière</th>
               <th className="text-left px-4 py-3 text-sm font-medium text-gray-500">Enseignant</th>
               <th className="text-left px-4 py-3 text-sm font-medium text-gray-500">h/sem</th>
+              <th className="text-left px-4 py-3 text-sm font-medium text-gray-500">Commun</th>
               <th className="text-right px-4 py-3 text-sm font-medium text-gray-500">Actions</th>
             </tr>
           </thead>
@@ -176,6 +178,7 @@ export default function SubjectsPage() {
                 <td className="px-4 py-3">{a.matiere_nom}</td>
                 <td className="px-4 py-3">{a.enseignant_nom || 'Non assigné'}</td>
                 <td className="px-4 py-3">{a.heures_par_semaine}h</td>
+                <td className="px-4 py-3 text-sm">{a.est_commun ? '✓' : '-'}</td>
                 <td className="px-4 py-3 text-right">
                   <button onClick={() => removeAssign(a.id)} className="p-1.5 text-gray-400 hover:text-red-600 rounded-lg">
                     <Trash2 className="h-4 w-4" />
@@ -278,6 +281,11 @@ export default function SubjectsPage() {
               onChange={e => setAssignForm(f => ({ ...f, heures_par_semaine: e.target.value }))}
               className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" />
           </div>
+          <label className="flex items-center gap-2">
+            <input type="checkbox" checked={assignForm.est_commun}
+              onChange={e => setAssignForm(f => ({ ...f, est_commun: e.target.checked }))} />
+            <span className="text-sm">Cours commun avec la classe technique associée</span>
+          </label>
           <div className="flex justify-end gap-3 pt-2">
             <button onClick={() => setAssignModalOpen(false)} className="px-4 py-2 text-gray-700 bg-gray-100 rounded-lg">Annuler</button>
             <button onClick={handleAssign} className="px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700">Affecter</button>

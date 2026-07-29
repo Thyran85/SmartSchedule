@@ -8,12 +8,14 @@ export default function ClassesPage() {
   const [classes, setClasses] = useState<Classe[]>([]);
   const [niveaux, setNiveaux] = useState<Niveau[]>([]);
   const [filieres, setFilieres] = useState<Filiere[]>([]);
+  const [allClasses, setAllClasses] = useState<Classe[]>([]);
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<Classe | null>(null);
-  const [form, setForm] = useState({ nom: '', niveau: '', filiere: '', effectif: '' });
+  const [form, setForm] = useState({ nom: '', niveau: '', filiere: '', effectif: '', classe_technique: '' });
 
   const load = () => {
     classesApi.list().then(r => setClasses(r.data.results));
+    classesApi.list().then(r => setAllClasses(r.data.results));
     niveauxApi.list().then(r => setNiveaux(r.data.results));
     filieresApi.list().then(r => setFilieres(r.data.results));
   };
@@ -22,7 +24,7 @@ export default function ClassesPage() {
 
   const openCreate = () => {
     setEditing(null);
-    setForm({ nom: '', niveau: '', filiere: '', effectif: '' });
+    setForm({ nom: '', niveau: '', filiere: '', effectif: '', classe_technique: '' });
     setModalOpen(true);
   };
 
@@ -33,6 +35,7 @@ export default function ClassesPage() {
       niveau: String(c.niveau),
       filiere: String(c.filiere),
       effectif: String(c.effectif),
+      classe_technique: String(c.classe_technique || ''),
     });
     setModalOpen(true);
   };
@@ -43,6 +46,7 @@ export default function ClassesPage() {
       niveau: Number(form.niveau),
       filiere: Number(form.filiere),
       effectif: Number(form.effectif),
+      classe_technique: form.classe_technique ? Number(form.classe_technique) : null,
     };
     if (editing) {
       await classesApi.update(editing.id, data);
@@ -81,6 +85,7 @@ export default function ClassesPage() {
               <th className="text-left px-4 py-3 text-sm font-medium text-gray-500">Niveau</th>
               <th className="text-left px-4 py-3 text-sm font-medium text-gray-500">Filière</th>
               <th className="text-left px-4 py-3 text-sm font-medium text-gray-500">Effectif</th>
+              <th className="text-left px-4 py-3 text-sm font-medium text-gray-500">Classe technique</th>
               <th className="text-right px-4 py-3 text-sm font-medium text-gray-500">Actions</th>
             </tr>
           </thead>
@@ -102,7 +107,9 @@ export default function ClassesPage() {
                     {c.effectif}
                   </div>
                 </td>
-                <td className="px-4 py-3 text-right">
+                <td className="px-4 py-3 text-sm text-gray-500">
+                  {allClasses.find(cl => cl.id === c.classe_technique)?.nom || '-'}
+                </td><td className="px-4 py-3 text-right">
                   <button onClick={() => openEdit(c)} className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors">
                     <Pencil className="h-4 w-4" />
                   </button>
@@ -114,7 +121,7 @@ export default function ClassesPage() {
             ))}
             {classes.length === 0 && (
               <tr>
-                <td colSpan={5} className="text-center py-8 text-gray-400">Aucune classe enregistrée</td>
+                <td colSpan={6} className="text-center py-8 text-gray-400">Aucune classe enregistrée</td>
               </tr>
             )}
           </tbody>
@@ -157,6 +164,16 @@ export default function ClassesPage() {
               type="number" value={form.effectif} onChange={e => setForm(f => ({ ...f, effectif: e.target.value }))}
               className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
             />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Classe technique associée</label>
+            <select value={form.classe_technique} onChange={e => setForm(f => ({ ...f, classe_technique: e.target.value }))}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none">
+              <option value="">Aucune</option>
+              {allClasses
+                .filter(c => c.filiere_nom === 'Technique' && (!form.niveau || c.niveau === Number(form.niveau)))
+                .map(c => <option key={c.id} value={c.id}>{c.nom}</option>)}
+            </select>
           </div>
           <div className="flex justify-end gap-3 pt-2">
             <button onClick={() => setModalOpen(false)} className="px-4 py-2 text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors">

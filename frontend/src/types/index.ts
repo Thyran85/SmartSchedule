@@ -17,6 +17,7 @@ export interface Classe {
   filiere: number;
   filiere_nom: string;
   effectif: number;
+  classe_technique: number | null;
 }
 
 export interface Matiere {
@@ -41,6 +42,7 @@ export interface ClasseMatiere {
   enseignant_nom: string;
   heures_par_semaine: number;
   est_demi_groupe: boolean;
+  est_commun: boolean;
 }
 
 export interface Enseignant {
@@ -115,6 +117,7 @@ export interface ContrainteSpecifique {
   classe: number | null;
   niveau: number | null;
   matiere: number | null;
+  salle: number | null;
   type_contrainte: string;
   jour_semaine: number | null;
   heure_limite: string | null;
@@ -147,11 +150,11 @@ export const TIME_SLOTS = [
   { start: '07:00', end: '08:00' },
   { start: '08:00', end: '09:00' },
   { start: '09:00', end: '10:00' },
-  { start: '10:15', end: '11:00' },
+  { start: '10:00', end: '11:00' },
   { start: '11:00', end: '12:00' },
   { start: '14:00', end: '15:00' },
   { start: '15:00', end: '16:00' },
-  { start: '16:15', end: '17:00' },
+  { start: '16:00', end: '17:00' },
   { start: '17:00', end: '18:00' },
 ];
 
@@ -171,6 +174,7 @@ export const SUBJECT_TYPES: Record<string, string> = {
 
 export const CONSTRAINT_TYPES: Record<string, string> = {
   INDISP_NIVEAU: 'Indisponibilité niveau',
+  INDISP_SALLE: 'Indisponibilité salle',
   MAT_PERIODE: 'Matière en période spécifique',
   MAX_HEURES_CONSEC: 'Max heures consécutives',
   FIN_AVANCEE: 'Fin des cours avancée',

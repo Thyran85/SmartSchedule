@@ -10,29 +10,20 @@ from ..constraints.models import ContrainteSpecifique
 from .models import Cours, ScheduleVersion
 
 # ── Time slots (1h granularity) ─────────────────────────────────────────
-# Morning  : 07-08, 08-09, 09-10
-# Break    10:00-10:15 (no courses)
-# Morning  : 10:15-11, 11-12
+# Morning  : 07-08, 08-09, 09-10, 10-11, 11-12
 # Lunch    12:00-14:00
-# Afternoon: 14-15, 15-16
-# Break    16:00-16:15 (no courses)
-# Afternoon: 16:15-17, 17-18
+# Afternoon: 14-15, 15-16, 16-17, 17-18
 
 SUB_SLOTS = [
     (7, 0, 8, 0),     # 0
     (8, 0, 9, 0),     # 1
     (9, 0, 10, 0),    # 2
-    (10, 15, 11, 0),  # 3
+    (10, 0, 11, 0),   # 3
     (11, 0, 12, 0),   # 4
     (14, 0, 15, 0),   # 5
     (15, 0, 16, 0),   # 6
-    (16, 15, 17, 0),  # 7
+    (16, 0, 17, 0),   # 7
     (17, 0, 18, 0),   # 8
-]
-
-BREAKS = [
-    (time(10, 0), time(10, 15)),
-    (time(16, 0), time(16, 15)),
 ]
 
 DAYS = list(range(5))  # 0=Monday → 4=Friday
@@ -65,13 +56,6 @@ def slots_per_week(early_finish_days=None):
     return result
 
 
-def is_break(start, end):
-    for bs, be in BREAKS:
-        if start < be and end > bs:
-            return True
-    return False
-
-
 def slot_to_tuple(t):
     """Convenience: (day, start, end) → hashable key."""
     return (t[0], t[1], t[2])
@@ -89,6 +73,7 @@ class ConstraintChecker:
         self.niveau_constraints = defaultdict(list)
         self.classe_constraints = defaultdict(list)
         self.matiere_constraints = defaultdict(list)
+        self.salle_constraints = defaultdict(list)
         self.global_constraints = []
         for c in self.all_constraints:
             if c.niveau_id:
@@ -97,7 +82,9 @@ class ConstraintChecker:
                 self.classe_constraints[c.classe_id].append(c)
             if c.matiere_id:
                 self.matiere_constraints[c.matiere_id].append(c)
-            if not c.niveau_id and not c.classe_id and not c.matiere_id:
+            if c.salle_id:
+                self.salle_constraints[c.salle_id].append(c)
+            if not c.niveau_id and not c.classe_id and not c.matiere_id and not c.salle_id:
                 self.global_constraints.append(c)
 
     def get_early_finish_days(self, niveau_id, classe_id):
@@ -157,10 +144,19 @@ class ConstraintChecker:
     def check_room_available(self, salle_id, day, start, end):
         if not salle_id:
             return True
+        # Check DisponibiliteSalle
         dispos = DisponibiliteSalle.objects.filter(
             salle_id=salle_id, jour_semaine=day)
         for ind in dispos.filter(est_disponible=False):
             if self._overlap(start, end, ind.heure_debut, ind.heure_fin):
+                return False
+        # Check INDISP_SALLE constraints
+        for c in self.salle_constraints.get(salle_id, []):
+            if c.type_contrainte != 'INDISP_SALLE' or c.jour_semaine is None:
+                continue
+            if c.jour_semaine != day:
+                continue
+            if c.heure_limite and self._overlap(start, end, c.heure_limite, time(18, 0)):
                 return False
         conflicting = Cours.objects.filter(
             salle_id=salle_id, jour_semaine=day,
@@ -284,20 +280,26 @@ class ScheduleGenerator:
 
     def _get_assignments(self):
         assignments = []
-        for cm in ClasseMatiere.objects.select_related('classe', 'matiere', 'enseignant').all():
+        for cm in ClasseMatiere.objects.select_related(
+            'classe', 'classe__classe_technique', 'matiere', 'enseignant'
+        ).all():
             if not cm.enseignant:
                 continue
-            assignments.append({
+            a = {
                 'classe': cm.classe,
                 'matiere': cm.matiere,
                 'enseignant': cm.enseignant,
                 'heures': cm.heures_par_semaine,
                 'est_demi_groupe': cm.est_demi_groupe,
-            })
+                'est_commun': cm.est_commun,
+            }
+            # If this is a shared course, also schedule the linked technical class
+            if cm.est_commun and cm.classe.classe_technique:
+                a['classe_technique'] = cm.classe.classe_technique
+            assignments.append(a)
         return assignments
 
     def _enrich_assignments(self, assignments):
-        """Attach early-finish map per assignment."""
         for a in assignments:
             a['early_finish'] = self.checker.get_early_finish_days(
                 a['classe'].niveau_id, a['classe'].id)
@@ -325,15 +327,15 @@ class ScheduleGenerator:
         heures_needed = assignment['heures']
         heures_assigned = 0
         slots_used = set()
-        days_used = defaultdict(float)  # hours already assigned per day
+        days_used = defaultdict(float)
 
         classe = assignment['classe']
         matiere = assignment['matiere']
         enseignant = assignment['enseignant']
         early_finish = assignment['early_finish']
         required_room = assignment['required_room']
+        classe_technique = assignment.get('classe_technique')
 
-        # Generate available 1h slots (respecting early-finish)
         all_slots = slots_per_week(early_finish)
         random.shuffle(all_slots)
 
@@ -345,10 +347,12 @@ class ScheduleGenerator:
             if slot_key in slots_used:
                 continue
 
-            if is_break(start, end):
-                continue
-
+            # Check class availability (main + linked if commun)
             if not self.checker.check_class_available(classe.id, day, start, end, version.id):
+                continue
+            if classe_technique and not self.checker.check_class_available(
+                classe_technique.id, day, start, end, version.id
+            ):
                 continue
 
             if not self.checker.check_teacher_available(enseignant.id, day, start, end):
@@ -360,16 +364,17 @@ class ScheduleGenerator:
 
             if not self.checker.check_level_constraints(classe.id, classe.niveau_id, day, start, end):
                 continue
+            if classe_technique and not self.checker.check_level_constraints(
+                classe_technique.id, classe_technique.niveau_id, day, start, end
+            ):
+                continue
 
-            # Check room
             salle = self._find_available_room(matiere, required_room, day, start, end, classe.effectif)
             if required_room and not salle:
                 continue
             if salle and not self.checker.check_computer_room_unique(salle.id, day, start, end):
                 continue
 
-            # ── Try to assign this 1h block + consecutive blocks ──────
-            # Determine how many consecutive 1h blocks we can take
             blocks_needed = min(int(heures_needed - heures_assigned), 5)
             blocks = self._find_consecutive_blocks(
                 day, start, end, blocks_needed, all_slots, slots_used, version,
@@ -378,26 +383,32 @@ class ScheduleGenerator:
             if not blocks:
                 continue
 
-            # Assign all blocks as a single course session
             block_start = blocks[0][1]
             block_end = blocks[-1][2]
+            total_block_h = len(blocks)
 
-            # Check spread: allow max 2h same subject per day
             if not self.checker.check_spread_constraint(classe.id, matiere.id, day, version.id):
                 continue
 
-            # Check min hours: don't let this assignment exceed reasonable daily load
             existing_day_h = days_used[day]
-            total_block_h = len(blocks)
-            if existing_day_h + total_block_h > 9:  # cap at 9h/day
+            if existing_day_h + total_block_h > 9:
                 continue
 
+            # Create cours for main class
             Cours.objects.create(
                 classe=classe, matiere=matiere, enseignant=enseignant,
                 salle=salle, version=version, jour_semaine=day,
                 heure_debut=block_start, heure_fin=block_end,
                 est_demi_groupe=assignment.get('est_demi_groupe', False),
             )
+            # If commun, create identical cours for linked technical class
+            if classe_technique:
+                Cours.objects.create(
+                    classe=classe_technique, matiere=matiere, enseignant=enseignant,
+                    salle=salle, version=version, jour_semaine=day,
+                    heure_debut=block_start, heure_fin=block_end,
+                    est_demi_groupe=assignment.get('est_demi_groupe', False),
+                )
 
             heures_assigned += total_block_h
             days_used[day] += total_block_h
@@ -409,7 +420,6 @@ class ScheduleGenerator:
     def _find_consecutive_blocks(self, day, start, end, max_blocks, all_slots, slots_used,
                                   version, classe, enseignant, matiere, salle, early_finish):
         """Find consecutive 1h blocks starting from (day, start, end)."""
-        # Find the index of the starting slot
         start_idx = None
         for i, (d, s, e) in enumerate(all_slots):
             if d == day and s == start and e == end:
@@ -423,16 +433,12 @@ class ScheduleGenerator:
             d, s, e = all_slots[i]
             if d != day:
                 break
-            if is_break(s, e):
-                break
             if slot_to_tuple((d, s, e)) in slots_used:
                 break
-            # Check early finish
             ef = early_finish.get(day, len(SUB_SLOTS) - 1)
             for idx, (h1, m1, h2, m2) in enumerate(SUB_SLOTS):
                 if mk_time(h1, m1) == s and idx > ef:
                     return blocks
-            # Check constraints for the cumulative block
             cum_start = blocks[0][1]
             cum_end = e
             if not self.checker.check_class_available(classe.id, day, cum_start, cum_end, version.id):
@@ -572,8 +578,6 @@ class ScheduleGenerator:
 
             for day, start, end in slots:
                 if day == old_day and start == old_start:
-                    continue
-                if is_break(start, end):
                     continue
                 if not self.checker.check_class_available(
                     course.classe_id, day, start, end, version.id,

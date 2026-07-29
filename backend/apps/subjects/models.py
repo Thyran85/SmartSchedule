@@ -32,6 +32,7 @@ class ClasseMatiere(models.Model):
     enseignant = models.ForeignKey('teachers.Enseignant', on_delete=models.SET_NULL, null=True, related_name='matieres_enseignees')
     heures_par_semaine = models.FloatField()
     est_demi_groupe = models.BooleanField(default=False, help_text="TP en demi-groupe")
+    est_commun = models.BooleanField(default=False, help_text="Cours commun avec la classe technique associée")
 
     class Meta:
         verbose_name = "Matière de classe"
