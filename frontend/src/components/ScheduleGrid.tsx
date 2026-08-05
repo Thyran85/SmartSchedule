@@ -1,36 +1,117 @@
 import clsx from 'clsx';
-import { Lock, Unlock } from 'lucide-react';
+import { Lock, Unlock, MapPin, User } from 'lucide-react';
 import type { Cours } from '../types';
 import { DAYS, TIME_SLOTS } from '../types';
+
+type ViewType = 'classe' | 'enseignant' | 'salle';
 
 interface ScheduleGridProps {
   courses: Cours[];
   onToggleLock?: (id: number) => void;
   onCourseClick?: (course: Cours) => void;
-  viewType: 'classe' | 'enseignant' | 'salle';
+  viewType: ViewType;
   entityName?: string;
 }
 
-const subjectColors: Record<string, string> = {
-  MATH: 'bg-blue-100 border-blue-300 text-blue-800',
-  FR: 'bg-red-100 border-red-300 text-red-800',
-  ANG: 'bg-green-100 border-green-300 text-green-800',
-  HG: 'bg-amber-100 border-amber-300 text-amber-800',
-  PC: 'bg-purple-100 border-purple-300 text-purple-800',
-  SVT: 'bg-emerald-100 border-emerald-300 text-emerald-800',
-  EPS: 'bg-orange-100 border-orange-300 text-orange-800',
-  INFO: 'bg-cyan-100 border-cyan-300 text-cyan-800',
-  ELEC: 'bg-yellow-100 border-yellow-300 text-yellow-800',
-  ATEL: 'bg-rose-100 border-rose-300 text-rose-800',
-  TPINFO: 'bg-indigo-100 border-indigo-300 text-indigo-800',
-};
+const subjectStyles: { block: string; bar: string }[] = [
+  { block: 'border-indigo-200/70 bg-indigo-50/80 text-indigo-900', bar: 'bg-indigo-500' },
+  { block: 'border-rose-200/70 bg-rose-50/80 text-rose-900', bar: 'bg-rose-500' },
+  { block: 'border-emerald-200/70 bg-emerald-50/80 text-emerald-900', bar: 'bg-emerald-500' },
+  { block: 'border-amber-200/70 bg-amber-50/80 text-amber-900', bar: 'bg-amber-500' },
+  { block: 'border-violet-200/70 bg-violet-50/80 text-violet-900', bar: 'bg-violet-500' },
+  { block: 'border-cyan-200/70 bg-cyan-50/80 text-cyan-900', bar: 'bg-cyan-500' },
+  { block: 'border-orange-200/70 bg-orange-50/80 text-orange-900', bar: 'bg-orange-500' },
+  { block: 'border-teal-200/70 bg-teal-50/80 text-teal-900', bar: 'bg-teal-500' },
+  { block: 'border-fuchsia-200/70 bg-fuchsia-50/80 text-fuchsia-900', bar: 'bg-fuchsia-500' },
+  { block: 'border-sky-200/70 bg-sky-50/80 text-sky-900', bar: 'bg-sky-500' },
+  { block: 'border-lime-200/70 bg-lime-50/80 text-lime-900', bar: 'bg-lime-500' },
+];
 
-const defaultColor = 'bg-gray-100 border-gray-300 text-gray-800';
-
-function getSubjectColor(course: Cours): string {
+function styleFor(course: Cours): { block: string; bar: string } {
   const code = course.matiere_nom.substring(0, 4).toUpperCase();
-  const key = Object.keys(subjectColors).find(k => code.startsWith(k));
-  return key ? subjectColors[key] : defaultColor;
+  let hash = 0;
+  for (let i = 0; i < code.length; i++) hash = (hash * 31 + code.charCodeAt(i)) >>> 0;
+  return subjectStyles[hash % subjectStyles.length];
+}
+
+function CourseBody({ course, viewType }: { course: Cours; viewType: ViewType }) {
+  if (viewType === 'salle') {
+    return (
+      <>
+        <div className="font-display text-[13px] font-semibold leading-tight">{course.matiere_nom}</div>
+        <div className="mt-0.5 text-[11px] opacity-75">{course.classe_nom}</div>
+        {course.enseignant_nom && (
+          <div className="flex items-center gap-1 text-[11px] opacity-60">
+            <User className="h-3 w-3 shrink-0" />
+            <span className="truncate">{course.enseignant_nom}</span>
+          </div>
+        )}
+      </>
+    );
+  }
+  return (
+    <>
+      <div className="font-display text-[13px] font-semibold leading-tight">{course.matiere_nom}</div>
+      <div className="mt-0.5 flex items-center gap-1 text-[11px] opacity-75">
+        <User className="h-3 w-3 shrink-0" />
+        <span className="truncate">{viewType === 'classe' ? course.enseignant_nom : course.classe_nom}</span>
+      </div>
+      {course.salle_nom && (
+        <div className="flex items-center gap-1 text-[11px] opacity-60">
+          <MapPin className="h-3 w-3 shrink-0" />
+          <span className="truncate">{course.salle_nom}</span>
+        </div>
+      )}
+    </>
+  );
+}
+
+function CourseCell({
+  course,
+  viewType,
+  onClick,
+  onToggleLock,
+}: {
+  course: Cours;
+  viewType: ViewType;
+  onClick?: () => void;
+  onToggleLock?: (id: number) => void;
+}) {
+  const style = styleFor(course);
+  return (
+    <div
+      className={clsx(
+        'group relative m-0.5 flex h-[52px] cursor-pointer overflow-hidden rounded-[10px] border text-left',
+        'shadow-[0_1px_2px_rgba(33,29,62,0.06)] transition-all duration-200',
+        'hover:-translate-y-px hover:shadow-card',
+        style.block,
+      )}
+      onClick={onClick}
+      role="button"
+      tabIndex={0}
+      onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') onClick?.(); }}
+    >
+      <span className={clsx('h-full w-1 shrink-0', style.bar)} aria-hidden />
+      <div className="min-w-0 flex-1 px-2 py-1.5">
+        <CourseBody course={course} viewType={viewType} />
+      </div>
+      {course.est_verrouille && (
+        <span className="absolute right-1 top-1 grid h-4 w-4 place-items-center rounded-full bg-white/80 text-yellow-600 shadow-sm">
+          <Lock className="h-2.5 w-2.5" />
+        </span>
+      )}
+      {onToggleLock && (
+        <button
+          onClick={e => { e.stopPropagation(); onToggleLock(course.id); }}
+          className="absolute -right-1 -top-1 grid h-5 w-5 place-items-center rounded-full border border-line bg-surface text-muted opacity-0 shadow-card transition-all duration-150 hover:text-ink group-hover:opacity-100"
+          title={course.est_verrouille ? 'Déverrouiller' : 'Verrouiller'}
+          aria-label={course.est_verrouille ? 'Déverrouiller' : 'Verrouiller'}
+        >
+          {course.est_verrouille ? <Unlock className="h-3 w-3" /> : <Lock className="h-3 w-3" />}
+        </button>
+      )}
+    </div>
+  );
 }
 
 export default function ScheduleGrid({
@@ -40,55 +121,31 @@ export default function ScheduleGrid({
     return courses.find(c => c.jour_semaine === day && c.heure_debut.slice(0, 5) === start);
   };
 
-  const renderCourseContent = (course: Cours) => {
-    switch (viewType) {
-      case 'classe':
-        return (
-          <>
-            <div className="font-semibold text-xs leading-tight">{course.matiere_nom}</div>
-            <div className="text-[10px] mt-0.5 opacity-75">{course.enseignant_nom || '-'}</div>
-            {course.salle_nom && (
-              <div className="text-[10px] opacity-60">{course.salle_nom}</div>
-            )}
-          </>
-        );
-      case 'enseignant':
-        return (
-          <>
-            <div className="font-semibold text-xs leading-tight">{course.matiere_nom}</div>
-            <div className="text-[10px] mt-0.5 opacity-75">{course.classe_nom}</div>
-            {course.salle_nom && (
-              <div className="text-[10px] opacity-60">{course.salle_nom}</div>
-            )}
-          </>
-        );
-      case 'salle':
-        return (
-          <>
-            <div className="font-semibold text-xs leading-tight">{course.matiere_nom}</div>
-            <div className="text-[10px] mt-0.5 opacity-75">{course.classe_nom}</div>
-            <div className="text-[10px] opacity-60">{course.enseignant_nom || '-'}</div>
-          </>
-        );
-    }
-  };
-
   return (
-    <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+    <div className="card animate-fade-up overflow-hidden">
       {entityName && (
-        <div className="px-4 py-3 border-b border-gray-200 bg-gray-50">
-          <h2 className="font-semibold">{entityName}</h2>
+        <div className="flex items-center justify-between border-b border-line bg-paper/60 px-5 py-3.5">
+          <div>
+            <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted">
+              Emploi du temps
+            </p>
+            <h2 className="font-display text-lg font-semibold text-ink">{entityName}</h2>
+          </div>
+          <span className="chip bg-primary-soft text-primary">{courses.length} cours</span>
         </div>
       )}
-      <div className="overflow-x-auto">
-        <table className="w-full min-w-[700px]">
+      <div className="overflow-x-auto scrollbar-thin">
+        <table className="w-full min-w-[720px]">
           <thead>
             <tr>
-              <th className="w-20 px-2 py-3 text-left text-xs font-medium text-gray-500 uppercase bg-gray-50 border-r border-b border-gray-200">
+              <th className="w-24 border-b border-r border-line bg-paper/60 px-3 py-3 text-left text-[11px] font-semibold uppercase tracking-wide text-muted">
                 Créneau
               </th>
               {DAYS.map(day => (
-                <th key={day} className="px-2 py-3 text-center text-xs font-medium text-gray-500 uppercase bg-gray-50 border-r border-b border-gray-200 last:border-r-0">
+                <th
+                  key={day}
+                  className="border-b border-r border-line bg-paper/60 px-2 py-3 text-center text-[11px] font-semibold uppercase tracking-wide text-muted last:border-r-0"
+                >
                   {day}
                 </th>
               ))}
@@ -99,59 +156,37 @@ export default function ScheduleGrid({
               const isLastSlot = slotIdx === TIME_SLOTS.length - 1;
               return (
                 <tr key={slot.start}>
-                  <td className="px-2 py-1 text-xs text-gray-500 bg-gray-50 border-r border-b border-gray-200 whitespace-nowrap">
-                    {slot.start} - {slot.end}
+                  <td
+                    className={clsx(
+                      'whitespace-nowrap border-b border-r border-line bg-paper/40 px-3 py-1 text-[11px] font-medium text-muted',
+                      isLastSlot && 'border-b-0',
+                    )}
+                  >
+                    <span className="font-mono">{slot.start}</span>
+                    <span className="mx-0.5 text-muted/50">–</span>
+                    <span className="font-mono">{slot.end}</span>
                   </td>
                   {DAYS.map((_, dayIdx) => {
                     const course = getCourseForSlot(dayIdx, slot.start);
-                    const isBreak = false;
                     return (
                       <td
                         key={dayIdx}
                         className={clsx(
-                          'px-1 py-1 border-r border-b border-gray-100 align-top',
+                          'border-b border-r border-line px-1 py-1 align-top last:border-r-0',
                           isLastSlot && 'border-b-0',
-                          dayIdx === DAYS.length - 1 && 'border-r-0',
+                          !course && 'bg-surface',
                         )}
-                        style={{ height: course ? 'auto' : '48px' }}
+                        style={{ height: course ? undefined : '52px' }}
                       >
                         {course ? (
-                          <div
-                            className={clsx(
-                              'p-1.5 rounded-lg border cursor-pointer transition-shadow hover:shadow-sm relative group',
-                              getSubjectColor(course),
-                              course.est_verrouille && 'ring-2 ring-yellow-400',
-                            )}
+                          <CourseCell
+                            course={course}
+                            viewType={viewType}
                             onClick={() => onCourseClick?.(course)}
-                          >
-                            <div className="flex items-start justify-between gap-1">
-                              <div className="flex-1 min-w-0">
-                                {renderCourseContent(course)}
-                              </div>
-                              <div className="flex flex-col gap-0.5 shrink-0">
-                                {course.est_verrouille && (
-                                  <Lock className="h-3 w-3 text-yellow-600" />
-                                )}
-                              </div>
-                            </div>
-                            {onToggleLock && (
-                              <button
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  onToggleLock(course.id);
-                                }}
-                                className="absolute -top-1.5 -right-1.5 p-0.5 bg-white rounded-full shadow border border-gray-200 opacity-0 group-hover:opacity-100 transition-opacity"
-                                title={course.est_verrouille ? 'Déverrouiller' : 'Verrouiller'}
-                              >
-                                {course.est_verrouille
-                                  ? <Unlock className="h-3 w-3 text-gray-500" />
-                                  : <Lock className="h-3 w-3 text-gray-400" />
-                                }
-                              </button>
-                            )}
-                          </div>
+                            onToggleLock={onToggleLock}
+                          />
                         ) : (
-                          <div className="h-full min-h-[48px]" />
+                          <div className="h-full min-h-[52px]" />
                         )}
                       </td>
                     );

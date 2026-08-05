@@ -1,32 +1,49 @@
 import { useState, useEffect } from 'react';
-import { Plus, Pencil, Trash2, Clock, Ban } from 'lucide-react';
+import { Plus, Pencil, Trash2, Clock, Ban, GraduationCap, Clock4, Mail } from 'lucide-react';
 import { enseignantsApi, matieresApi } from '../services/api';
 import type { Enseignant, Matiere } from '../types';
 import Modal from '../components/Modal';
+import PageHeader from '../components/PageHeader';
+import Button from '../components/ui/Button';
+import IconButton from '../components/ui/IconButton';
+import Badge from '../components/ui/Badge';
+import EmptyState from '../components/ui/EmptyState';
+import Card from '../components/ui/Card';
+import { Field, Input, Select, Checkbox } from '../components/ui/Input';
+import { SkeletonCard } from '../components/ui/Skeleton';
+import { useConfirm } from '../components/ui/Confirm';
+import { useToast } from '../components/ui/Toast';
+
+const empty = {
+  nom: '', prenom: '', email: '', matiere: '',
+  volume_horaire_max: '20', temps_partiel: false,
+  prefere_eviter_apres_16h: false,
+};
 
 export default function TeachersPage() {
   const [teachers, setTeachers] = useState<Enseignant[]>([]);
   const [matieres, setMatieres] = useState<Matiere[]>([]);
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<Enseignant | null>(null);
-  const [form, setForm] = useState({
-    nom: '', prenom: '', email: '', matiere: '',
-    volume_horaire_max: '20', temps_partiel: false,
-    prefere_eviter_apres_16h: false,
-  });
+  const [loading, setLoading] = useState(true);
+  const [form, setForm] = useState(empty);
+  const confirm = useConfirm();
+  const toast = useToast();
 
   const load = () => {
-    enseignantsApi.list().then(r => setTeachers(r.data.results));
-    matieresApi.list().then(r => setMatieres(r.data.results));
+    setLoading(true);
+    Promise.all([
+      enseignantsApi.list(),
+      matieresApi.list(),
+    ]).then(([t, m]) => {
+      setTeachers(t.data.results);
+      setMatieres(m.data.results);
+    }).catch(() => {}).finally(() => setLoading(false));
   };
 
   useEffect(load, []);
 
-  const openCreate = () => {
-    setEditing(null);
-    setForm({ nom: '', prenom: '', email: '', matiere: '', volume_horaire_max: '20', temps_partiel: false, prefere_eviter_apres_16h: false });
-    setModalOpen(true);
-  };
+  const openCreate = () => { setEditing(null); setForm(empty); setModalOpen(true); };
 
   const openEdit = (t: Enseignant) => {
     setEditing(t);
@@ -50,124 +67,168 @@ export default function TeachersPage() {
     };
     if (editing) {
       await enseignantsApi.update(editing.id, data);
+      toast.success('Enseignant modifié', `${data.prenom} ${data.nom} a été mis à jour.`);
     } else {
       await enseignantsApi.create(data);
+      toast.success('Enseignant ajouté', `${data.prenom} ${data.nom} a été enregistré.`);
     }
     setModalOpen(false);
     load();
   };
 
-  const handleDelete = async (id: number) => {
-    if (confirm('Supprimer cet enseignant ?')) {
-      await enseignantsApi.delete(id);
-      load();
-    }
+  const handleDelete = async (t: Enseignant) => {
+    const ok = await confirm({
+      title: 'Supprimer l’enseignant',
+      message: `Voulez-vous vraiment supprimer « ${t.prenom} ${t.nom} » ? Cette action est irréversible.`,
+      confirmLabel: 'Supprimer',
+      danger: true,
+    });
+    if (!ok) return;
+    await enseignantsApi.delete(t.id);
+    toast.success('Enseignant supprimé', `${t.prenom} ${t.nom} a été retiré.`);
+    load();
   };
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-6">
-        <div>
-          <h1 className="text-2xl font-bold">Enseignants</h1>
-          <p className="text-gray-500 mt-1">Gestion des enseignants et de leurs disponibilités</p>
+      <PageHeader
+        kicker="Gestion"
+        title="Enseignants"
+        subtitle="Profils, volumes horaires et préférences de planification"
+        actions={
+          <Button onClick={openCreate} icon={<Plus />}>
+            Ajouter un enseignant
+          </Button>
+        }
+      />
+
+      {loading ? (
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          {Array.from({ length: 4 }).map((_, i) => <SkeletonCard key={i} lines={2} />)}
         </div>
-        <button onClick={openCreate} className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">
-          <Plus className="h-4 w-4" />
-          Ajouter un enseignant
-        </button>
-      </div>
+      ) : teachers.length === 0 ? (
+        <Card className="animate-fade-up">
+          <EmptyState
+            icon={<GraduationCap className="h-7 w-7" />}
+            title="Aucun enseignant"
+            description="Enregistrez les enseignants du lycée et leurs disponibilités."
+            action={
+              <Button onClick={openCreate} icon={<Plus />}>Ajouter un enseignant</Button>
+            }
+          />
+        </Card>
+      ) : (
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 animate-fade-up">
+          {teachers.map((t, i) => (
+            <Card
+              key={t.id}
+              hover
+              padding="none"
+              className="group animate-fade-up overflow-hidden"
+              style={{ animationDelay: `${i * 40}ms` }}
+            >
+              <div className="flex items-start gap-4 p-5">
+                <div className="grid h-12 w-12 shrink-0 place-items-center rounded-full bg-gradient-to-br from-primary to-primary-strong font-display text-base font-semibold text-white">
+                  {t.prenom.charAt(0)}{t.nom.charAt(0)}
+                </div>
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <h3 className="truncate text-[15px] font-semibold text-ink">
+                        {t.prenom} {t.nom}
+                      </h3>
+                      <p className="mt-0.5 flex items-center gap-1.5 text-sm text-muted">
+                        <Mail className="h-3.5 w-3.5" />
+                        <span className="truncate">{t.email || '—'}</span>
+                      </p>
+                    </div>
+                    <div className="flex shrink-0 gap-0.5">
+                      <IconButton label="Modifier" tone="primary" onClick={() => openEdit(t)}>
+                        <Pencil />
+                      </IconButton>
+                      <IconButton label="Supprimer" tone="danger" onClick={() => handleDelete(t)}>
+                        <Trash2 />
+                      </IconButton>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div className="flex flex-wrap items-center gap-2 border-t border-line bg-paper/50 px-5 py-3">
+                <Badge tone={t.matiere_nom ? 'primary' : 'neutral'} icon={<GraduationCap />}>
+                  {t.matiere_nom || 'Sans matière'}
+                </Badge>
+                <Badge tone="info" icon={<Clock4 />}>
+                  {t.volume_horaire_max}h/semaine
+                </Badge>
+                {t.temps_partiel && (
+                  <Badge tone="gold" icon={<Ban />}>Temps partiel</Badge>
+                )}
+                {t.prefere_eviter_apres_16h && (
+                  <Badge tone="danger" icon={<Clock />}>Évite après 16h</Badge>
+                )}
+              </div>
+            </Card>
+          ))}
+        </div>
+      )}
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        {teachers.map(t => (
-          <div key={t.id} className="bg-white rounded-xl border border-gray-200 p-4 hover:shadow-sm transition-shadow">
-            <div className="flex items-start justify-between">
-              <div>
-                <h3 className="font-semibold">{t.prenom} {t.nom}</h3>
-                <p className="text-sm text-gray-500 mt-0.5">{t.matiere_nom || 'Sans matière'}</p>
-              </div>
-              <div className="flex gap-1">
-                <button onClick={() => openEdit(t)} className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg">
-                  <Pencil className="h-4 w-4" />
-                </button>
-                <button onClick={() => handleDelete(t.id)} className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg">
-                  <Trash2 className="h-4 w-4" />
-                </button>
-              </div>
-            </div>
-            <div className="flex items-center gap-4 mt-3 text-sm text-gray-500">
-              <div className="flex items-center gap-1">
-                <Clock className="h-4 w-4" />
-                {t.volume_horaire_max}h/sem
-              </div>
-              {t.temps_partiel && (
-                <span className="flex items-center gap-1 text-amber-600">
-                  <Ban className="h-4 w-4" /> Temps partiel
-                </span>
-              )}
-              {t.prefere_eviter_apres_16h && (
-                <span className="text-orange-600">Évite après 16h</span>
-              )}
-            </div>
-          </div>
-        ))}
-        {teachers.length === 0 && (
-          <div className="col-span-2 text-center py-8 text-gray-400">Aucun enseignant enregistré</div>
-        )}
-      </div>
-
-      <Modal open={modalOpen} onClose={() => setModalOpen(false)} title={editing ? 'Modifier l\'enseignant' : 'Nouvel enseignant'}>
+      <Modal
+        open={modalOpen}
+        onClose={() => setModalOpen(false)}
+        title={editing ? 'Modifier l’enseignant' : 'Nouvel enseignant'}
+        subtitle={editing ? 'Mettez à jour les informations' : 'Ajoutez un enseignant au lycée'}
+        icon={<GraduationCap className="h-5 w-5" />}
+        footer={
+          <>
+            <Button variant="outline" onClick={() => setModalOpen(false)}>Annuler</Button>
+            <Button onClick={handleSave}>{editing ? 'Enregistrer' : 'Créer l’enseignant'}</Button>
+          </>
+        }
+      >
         <div className="space-y-4">
           <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Nom</label>
-              <input type="text" value={form.nom} onChange={e => setForm(f => ({ ...f, nom: e.target.value }))}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Prénom</label>
-              <input type="text" value={form.prenom} onChange={e => setForm(f => ({ ...f, prenom: e.target.value }))}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" />
-            </div>
+            <Field label="Nom" htmlFor="t-nom" required>
+              <Input id="t-nom" type="text" value={form.nom}
+                onChange={e => setForm(f => ({ ...f, nom: e.target.value }))}
+                placeholder="Ex : Rakoto" />
+            </Field>
+            <Field label="Prénom" htmlFor="t-prenom" required>
+              <Input id="t-prenom" type="text" value={form.prenom}
+                onChange={e => setForm(f => ({ ...f, prenom: e.target.value }))}
+                placeholder="Ex : Jean" />
+            </Field>
           </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
-            <input type="email" value={form.email} onChange={e => setForm(f => ({ ...f, email: e.target.value }))}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" />
+          <Field label="Email" htmlFor="t-email">
+            <Input id="t-email" type="email" value={form.email}
+              onChange={e => setForm(f => ({ ...f, email: e.target.value }))}
+              placeholder="jean.rakoto@lycee.mg" />
+          </Field>
+          <div className="grid grid-cols-2 gap-4">
+            <Field label="Matière" htmlFor="t-matiere">
+              <Select id="t-matiere" value={form.matiere}
+                onChange={e => setForm(f => ({ ...f, matiere: e.target.value }))}>
+                <option value="">Sélectionner…</option>
+                {matieres.map(m => <option key={m.id} value={m.id}>{m.nom}</option>)}
+              </Select>
+            </Field>
+            <Field label="Volume horaire max/semaine" htmlFor="t-vol" required>
+              <Input id="t-vol" type="number" min="1" value={form.volume_horaire_max}
+                onChange={e => setForm(f => ({ ...f, volume_horaire_max: e.target.value }))} />
+            </Field>
           </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Matière</label>
-            <select value={form.matiere} onChange={e => setForm(f => ({ ...f, matiere: e.target.value }))}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none">
-              <option value="">Sélectionner...</option>
-              {matieres.map(m => <option key={m.id} value={m.id}>{m.nom}</option>)}
-            </select>
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Volume horaire max/semaine</label>
-            <input type="number" value={form.volume_horaire_max} onChange={e => setForm(f => ({ ...f, volume_horaire_max: e.target.value }))}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" />
-          </div>
-          <div className="space-y-2">
-            <label className="flex items-center gap-2">
-              <input type="checkbox" checked={form.temps_partiel}
-                onChange={e => setForm(f => ({ ...f, temps_partiel: e.target.checked }))}
-                className="rounded border-gray-300 text-blue-600 focus:ring-blue-500" />
-              <span className="text-sm">Temps partiel</span>
-            </label>
-            <label className="flex items-center gap-2">
-              <input type="checkbox" checked={form.prefere_eviter_apres_16h}
-                onChange={e => setForm(f => ({ ...f, prefere_eviter_apres_16h: e.target.checked }))}
-                className="rounded border-gray-300 text-blue-600 focus:ring-blue-500" />
-              <span className="text-sm">Préfère éviter les cours après 16h</span>
-            </label>
-          </div>
-          <div className="flex justify-end gap-3 pt-2">
-            <button onClick={() => setModalOpen(false)} className="px-4 py-2 text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200">
-              Annuler
-            </button>
-            <button onClick={handleSave} className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">
-              {editing ? 'Modifier' : 'Créer'}
-            </button>
+          <div className="grid gap-3 pt-1">
+            <Checkbox
+              label="Temps partiel"
+              description="Charge horaire réduite à prendre en compte."
+              checked={form.temps_partiel}
+              onChange={e => setForm(f => ({ ...f, temps_partiel: e.target.checked }))}
+            />
+            <Checkbox
+              label="Évite les cours après 16h"
+              description="Planification préférentielle en début d'après-midi."
+              checked={form.prefere_eviter_apres_16h}
+              onChange={e => setForm(f => ({ ...f, prefere_eviter_apres_16h: e.target.checked }))}
+            />
           </div>
         </div>
       </Modal>
