@@ -103,7 +103,7 @@ function CourseCell({
       {onToggleLock && (
         <button
           onClick={e => { e.stopPropagation(); onToggleLock(course.id); }}
-          className="absolute -right-1 -top-1 grid h-5 w-5 place-items-center rounded-full border border-line bg-surface text-muted opacity-0 shadow-card transition-all duration-150 hover:text-ink group-hover:opacity-100"
+          className="absolute -right-1 -top-1 grid h-5 w-5 place-items-center rounded-full border border-line bg-surface text-muted shadow-card transition-all duration-150 hover:text-ink md:opacity-0 md:group-hover:opacity-100"
           title={course.est_verrouille ? 'Déverrouiller' : 'Verrouiller'}
           aria-label={course.est_verrouille ? 'Déverrouiller' : 'Verrouiller'}
         >

@@ -9,7 +9,7 @@ import IconButton from '../components/ui/IconButton';
 import Badge from '../components/ui/Badge';
 import EmptyState from '../components/ui/EmptyState';
 import Card from '../components/ui/Card';
-import Table, { TableHead, Th, Td, Tr } from '../components/ui/Table';
+import Table, { TableHead, Th, Td, Tr, ThActions, TdActions } from '../components/ui/Table';
 import { Field, Input, Select } from '../components/ui/Input';
 import { SkeletonCard } from '../components/ui/Skeleton';
 import { useConfirm } from '../components/ui/Confirm';
@@ -130,7 +130,7 @@ export default function ClassesPage() {
               <Th>Filière</Th>
               <Th>Effectif</Th>
               <Th>Classe technique</Th>
-              <Th className="text-right">Actions</Th>
+              <ThActions>Actions</ThActions>
             </TableHead>
             {classes.map(c => (
               <Tr key={c.id} className="group">
@@ -162,7 +162,7 @@ export default function ClassesPage() {
                     </span>
                   ) : '—'}
                 </Td>
-                <Td>
+                <TdActions>
                   <div className="flex items-center justify-end gap-1">
                     <IconButton label="Modifier" tone="primary" onClick={() => openEdit(c)}>
                       <Pencil />
@@ -171,7 +171,7 @@ export default function ClassesPage() {
                       <Trash2 />
                     </IconButton>
                   </div>
-                </Td>
+                </TdActions>
               </Tr>
             ))}
           </Table>

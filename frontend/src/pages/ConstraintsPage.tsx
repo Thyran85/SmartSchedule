@@ -10,7 +10,7 @@ import IconButton from '../components/ui/IconButton';
 import Badge, { type BadgeTone } from '../components/ui/Badge';
 import EmptyState from '../components/ui/EmptyState';
 import Card from '../components/ui/Card';
-import Table, { TableHead, Th, Td, Tr } from '../components/ui/Table';
+import Table, { TableHead, Th, Td, Tr, ThActions, TdActions } from '../components/ui/Table';
 import { Field, Input, Select } from '../components/ui/Input';
 import { useConfirm } from '../components/ui/Confirm';
 import { useToast } from '../components/ui/Toast';
@@ -191,7 +191,7 @@ export default function ConstraintsPage() {
               <Th>Jour</Th>
               <Th>Valeur</Th>
               <Th>Description</Th>
-              <Th className="text-right">Actions</Th>
+              <ThActions>Actions</ThActions>
             </TableHead>
             {constraints.map(c => (
               <Tr key={c.id} className="group">
@@ -210,7 +210,7 @@ export default function ConstraintsPage() {
                 <Td className="max-w-[260px]">
                   <span className="line-clamp-2 text-[13px] text-muted">{c.description || '—'}</span>
                 </Td>
-                <Td>
+                <TdActions>
                   <div className="flex items-center justify-end gap-1">
                     <IconButton label="Modifier" tone="primary" onClick={() => openEdit(c)}>
                       <Pencil />
@@ -219,7 +219,7 @@ export default function ConstraintsPage() {
                       <Trash2 />
                     </IconButton>
                   </div>
-                </Td>
+                </TdActions>
               </Tr>
             ))}
           </Table>

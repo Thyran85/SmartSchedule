@@ -38,16 +38,16 @@ function StatCard({ stat, index }: { stat: Stat; index: number }) {
         )}
         aria-hidden
       />
-      <div className="relative flex items-start justify-between">
-        <div>
+      <div className="relative flex items-start justify-between gap-3">
+        <div className="min-w-0">
           <p className="text-[13px] font-medium text-muted">{stat.label}</p>
-          <p className="mt-1.5 font-display text-[28px] font-semibold leading-none text-ink">
+          <p className="mt-1.5 truncate font-display text-[24px] font-semibold leading-none text-ink sm:text-[28px]">
             {stat.value}
           </p>
         </div>
         <div
           className={clsx(
-            'grid h-11 w-11 place-items-center rounded-[13px] [&>svg]:h-5 [&>svg]:w-5',
+            'grid h-11 w-11 shrink-0 place-items-center rounded-[13px] [&>svg]:h-5 [&>svg]:w-5',
             stat.iconTint,
           )}
         >

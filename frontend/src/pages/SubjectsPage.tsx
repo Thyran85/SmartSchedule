@@ -10,7 +10,7 @@ import IconButton from '../components/ui/IconButton';
 import Badge, { type BadgeTone } from '../components/ui/Badge';
 import EmptyState from '../components/ui/EmptyState';
 import Card from '../components/ui/Card';
-import Table, { TableHead, Th, Td, Tr } from '../components/ui/Table';
+import Table, { TableHead, Th, Td, Tr, ThActions, TdActions } from '../components/ui/Table';
 import { Field, Input, Select, Checkbox } from '../components/ui/Input';
 import { useConfirm } from '../components/ui/Confirm';
 import { useToast } from '../components/ui/Toast';
@@ -162,7 +162,7 @@ export default function SubjectsPage() {
             <Th>Type</Th>
             <Th>h/sem</Th>
             <Th>Coeff</Th>
-            <Th className="text-right">Actions</Th>
+            <ThActions>Actions</ThActions>
           </TableHead>
           {matieres.map(m => (
             <Tr key={m.id} className="group">
@@ -180,7 +180,7 @@ export default function SubjectsPage() {
               </Td>
               <Td className="font-medium text-ink">{m.heures_par_semaine}h</Td>
               <Td>{m.coefficient}</Td>
-              <Td>
+              <TdActions>
                 <div className="flex items-center justify-end gap-1">
                   <IconButton label="Modifier" tone="primary" onClick={() => openEdit(m)}>
                     <Pencil />
@@ -189,7 +189,7 @@ export default function SubjectsPage() {
                     <Trash2 />
                   </IconButton>
                 </div>
-              </Td>
+              </TdActions>
             </Tr>
           ))}
         </Table>
@@ -224,7 +224,7 @@ export default function SubjectsPage() {
             <Th>Enseignant</Th>
             <Th>h/sem</Th>
             <Th>Commun</Th>
-            <Th className="text-right">Actions</Th>
+            <ThActions>Actions</ThActions>
           </TableHead>
           {assignments.map(a => (
             <Tr key={a.id} className="group">
@@ -242,13 +242,13 @@ export default function SubjectsPage() {
                   <Badge tone="success" icon={<Link2 />}>Commun</Badge>
                 ) : '—'}
               </Td>
-              <Td>
+              <TdActions>
                 <div className="flex items-center justify-end">
                   <IconButton label="Retirer" tone="danger" onClick={() => removeAssign(a)}>
                     <Trash2 />
                   </IconButton>
                 </div>
-              </Td>
+              </TdActions>
             </Tr>
           ))}
         </Table>
