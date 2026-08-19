@@ -17,7 +17,7 @@ class FiliereSerializer(serializers.ModelSerializer):
 class ClasseSerializer(serializers.ModelSerializer):
     niveau_nom = serializers.CharField(source='niveau.nom', read_only=True)
     filiere_nom = serializers.CharField(source='filiere.nom', read_only=True)
-
+    salle_attachee_nom = serializers.CharField(source='salle_attachee.nom', read_only=True, default=None)
 
     class Meta:
         model = Classe

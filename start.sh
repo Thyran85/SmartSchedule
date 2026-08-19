@@ -52,6 +52,9 @@ python "$ROOT_DIR/backend/manage.py" migrate 2>&1 | tail -2
 echo ""
 echo "[4/5] Données..."
 
+echo "  → Nettoyage des anciennes données..."
+python "$ROOT_DIR/backend/manage.py" flush --no-input 2>&1 | tail -1 | sed 's/^/    /'
+
 echo "  → Superuser admin..."
 echo "from django.contrib.auth.models import User
 if not User.objects.filter(username='admin').exists():
@@ -69,7 +72,27 @@ done
 
 # ── 4. Démarrage ────────────────────────────────────────────────────
 echo ""
-echo "[5/5] Démarrage des serveurs..."
+echo "[5/5] Libération des ports déjà utilisés..."
+
+PIDS=""
+for p in 8000 5173 5174; do
+    if command -v lsof >/dev/null 2>&1; then
+        PIDS="$PIDS $(lsof -t -i :$p 2>/dev/null || true)"
+    elif command -v fuser >/dev/null 2>&1; then
+        PIDS="$PIDS $(fuser $p/tcp 2>/dev/null || true)"
+    fi
+done
+PIDS=$(echo "$PIDS" | tr ' ' '\n' | grep -v '^$' | sort -u)
+if [ -n "$PIDS" ]; then
+    echo "  → Arrêt des processus existants (ports 8000/5173/5174)..."
+    kill $PIDS 2>/dev/null || true
+    sleep 1
+else
+    echo "  → Aucun port occupé, tout est libre."
+fi
+
+echo ""
+echo "Démarrage des serveurs..."
 echo ""
 echo "  Backend API :   http://localhost:8000/api/"
 echo "  Admin Django :  http://localhost:8000/admin/"

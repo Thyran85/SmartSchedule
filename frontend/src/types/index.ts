@@ -18,6 +18,7 @@ export interface Classe {
   filiere_nom: string;
   effectif: number;
   classe_technique: number | null;
+  salle_attachee_nom: string | null;
 }
 
 export interface Matiere {
@@ -72,6 +73,8 @@ export interface Salle {
   capacite: number;
   type: 'NORMALE' | 'LABORATOIRE' | 'ATELIER' | 'INFORMATIQUE';
   est_salle_unique: boolean;
+  classe: number | null;
+  classe_nom: string | null;
 }
 
 export interface DisponibiliteSalle {

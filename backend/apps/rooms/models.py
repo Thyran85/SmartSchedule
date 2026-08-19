@@ -12,6 +12,14 @@ class Salle(models.Model):
     capacite = models.IntegerField()
     type = models.CharField(max_length=20, choices=TypeSalle.choices, default=TypeSalle.NORMALE)
     est_salle_unique = models.BooleanField(default=False, help_text="True si c'est une salle unique (ex: seule salle informatique)")
+    classe = models.OneToOneField(
+        'classes.Classe',
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name='salle_attachee',
+        help_text="Classe à laquelle cette salle est rattachée (créée automatiquement)",
+    )
 
     class Meta:
         verbose_name = "Salle"

@@ -66,6 +66,9 @@ export const disponibilitesEnseignantApi = {
     api.get<PaginatedResponse<DisponibiliteEnseignant>>('/teachers/disponibilites/', { params }),
   create: (d: Partial<DisponibiliteEnseignant>) =>
     api.post<DisponibiliteEnseignant>('/teachers/disponibilites/', d),
+  update: (id: number, d: Partial<DisponibiliteEnseignant>) =>
+    api.put<DisponibiliteEnseignant>(`/teachers/disponibilites/${id}/`, d),
+  delete: (id: number) => api.delete(`/teachers/disponibilites/${id}/`),
 };
 
 // Rooms

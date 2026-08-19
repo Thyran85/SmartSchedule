@@ -10,6 +10,7 @@ import IconButton from '../components/ui/IconButton';
 import Badge, { type BadgeTone } from '../components/ui/Badge';
 import EmptyState from '../components/ui/EmptyState';
 import Card from '../components/ui/Card';
+import Table, { TableHead, Th, Td, Tr, ThActions, TdActions } from '../components/ui/Table';
 import { Field, Input, Select, Checkbox } from '../components/ui/Input';
 import { SkeletonCard } from '../components/ui/Skeleton';
 import { useConfirm } from '../components/ui/Confirm';
@@ -88,7 +89,7 @@ export default function RoomsPage() {
       <PageHeader
         kicker="Gestion"
         title="Salles"
-        subtitle="Salles de cours, laboratoires, ateliers et salles informatiques"
+        subtitle="Chaque classe a sa salle automatiquement — ajoutez les salles spéciales (labos, ateliers, informatique)"
         actions={
           <Button onClick={openCreate} icon={<Plus />}>
             Ajouter une salle
@@ -105,53 +106,73 @@ export default function RoomsPage() {
           <EmptyState
             icon={<DoorOpen className="h-7 w-7" />}
             title="Aucune salle"
-            description="Ajoutez les salles du lycée pour permettre la génération."
+            description="Les salles de classe sont créées avec chaque classe. Ajoutez ici les salles spéciales (laboratoires, ateliers…)."
             action={<Button onClick={openCreate} icon={<Plus />}>Ajouter une salle</Button>}
           />
         </Card>
       ) : (
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 animate-fade-up">
-          {rooms.map((r, i) => {
-            const Icon = typeIcons[r.type] || DoorOpen;
-            return (
-              <Card
-                key={r.id}
-                hover
-                padding="none"
-                className="group animate-fade-up overflow-hidden"
-                style={{ animationDelay: `${i * 40}ms` }}
-              >
-                <div className="flex items-start gap-3.5 p-5">
-                  <span className="grid h-12 w-12 shrink-0 place-items-center rounded-[13px] bg-primary-soft text-primary [&>svg]:h-5 [&>svg]:w-5">
-                    <Icon />
-                  </span>
-                  <div className="min-w-0 flex-1">
-                    <h3 className="truncate text-[15px] font-semibold text-ink">{r.nom}</h3>
-                    <p className="mt-0.5 flex items-center gap-1.5 text-sm text-muted">
-                      <Users className="h-4 w-4" />
+        <div className="animate-fade-up">
+          <Table
+            head={
+              <TableHead>
+                <Th>Salle</Th>
+                <Th>Type</Th>
+                <Th>Capacité</Th>
+                <Th>Salle unique</Th>
+                <Th>Classe rattachée</Th>
+                <ThActions>Actions</ThActions>
+              </TableHead>
+            }
+          >
+            {rooms.map((r, i) => {
+              const Icon = typeIcons[r.type] || DoorOpen;
+              return (
+                <Tr key={r.id} className="animate-fade-in" style={{ animationDelay: `${i * 30}ms` }}>
+                  <Td>
+                    <div className="flex items-center gap-3">
+                      <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-primary-soft text-primary [&>svg]:h-4 [&>svg]:w-4">
+                        <Icon />
+                      </span>
+                      <span className="font-semibold text-ink">{r.nom}</span>
+                    </div>
+                  </Td>
+                  <Td>
+                    <Badge tone={typeTones[r.type] || 'neutral'} dot>
+                      {ROOM_TYPES[r.type] || r.type}
+                    </Badge>
+                  </Td>
+                  <Td>
+                    <span className="inline-flex items-center gap-1.5 text-body">
+                      <Users className="h-4 w-4 text-muted" />
                       {r.capacite} places
-                    </p>
-                  </div>
-                  <div className="flex shrink-0 gap-0.5">
-                    <IconButton label="Modifier" tone="primary" onClick={() => openEdit(r)}>
-                      <Pencil />
-                    </IconButton>
-                    <IconButton label="Supprimer" tone="danger" onClick={() => handleDelete(r)}>
-                      <Trash2 />
-                    </IconButton>
-                  </div>
-                </div>
-                <div className="flex items-center gap-2 border-t border-line bg-paper/50 px-5 py-3">
-                  <Badge tone={typeTones[r.type] || 'neutral'} dot>
-                    {ROOM_TYPES[r.type] || r.type}
-                  </Badge>
-                  {r.est_salle_unique && (
-                    <Badge tone="danger">Salle unique</Badge>
-                  )}
-                </div>
-              </Card>
-            );
-          })}
+                    </span>
+                  </Td>
+                  <Td>
+                    {r.est_salle_unique ? <Badge tone="danger">Oui</Badge> : <span className="text-muted">—</span>}
+                  </Td>
+                  <Td>
+                    {r.classe_nom ? (
+                      <Badge tone="success" icon={<DoorOpen />}>
+                        {r.classe_nom}
+                      </Badge>
+                    ) : (
+                      <span className="text-muted">—</span>
+                    )}
+                  </Td>
+                  <TdActions>
+                    <div className="flex justify-end gap-0.5">
+                      <IconButton label="Modifier" tone="primary" onClick={() => openEdit(r)}>
+                        <Pencil />
+                      </IconButton>
+                      <IconButton label="Supprimer" tone="danger" onClick={() => handleDelete(r)}>
+                        <Trash2 />
+                      </IconButton>
+                    </div>
+                  </TdActions>
+                </Tr>
+              );
+            })}
+          </Table>
         </div>
       )}
 
@@ -169,6 +190,13 @@ export default function RoomsPage() {
         }
       >
         <div className="space-y-4">
+          <div className="flex items-start gap-2.5 rounded-xl border border-primary/20 bg-primary-soft/60 px-3.5 py-3 text-sm text-ink">
+            <DoorOpen className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
+            <p>
+              Les salles de classe (normales) sont créées automatiquement avec chaque classe.
+              Utilisez ce formulaire pour les salles spéciales : laboratoires, ateliers, salles informatiques.
+            </p>
+          </div>
           <Field label="Nom" htmlFor="salle-nom" required>
             <Input id="salle-nom" type="text" value={form.nom}
               onChange={e => setForm(f => ({ ...f, nom: e.target.value }))}

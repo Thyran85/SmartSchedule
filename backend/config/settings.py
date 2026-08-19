@@ -23,7 +23,7 @@ INSTALLED_APPS = [
     'corsheaders',
     'django_filters',
     'drf_spectacular',
-    'apps.classes',
+    'apps.classes.apps.ClassesConfig',
     'apps.teachers',
     'apps.subjects',
     'apps.rooms',

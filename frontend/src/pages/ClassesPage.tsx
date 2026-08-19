@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Plus, Pencil, Trash2, Users, School, Link2 } from 'lucide-react';
+import { Plus, Pencil, Trash2, Users, School, Link2, DoorOpen } from 'lucide-react';
 import { classesApi, niveauxApi, filieresApi } from '../services/api';
 import type { Classe, Niveau, Filiere } from '../types';
 import Modal from '../components/Modal';
@@ -74,7 +74,7 @@ export default function ClassesPage() {
       toast.success('Classe modifiée', `${data.nom} a été mis à jour.`);
     } else {
       await classesApi.create(data);
-      toast.success('Classe créée', `${data.nom} a été ajoutée.`);
+      toast.success('Classe créée', `${data.nom} et sa salle « Salle ${data.nom} » ont été ajoutées.`);
     }
     setModalOpen(false);
     load();
@@ -130,6 +130,7 @@ export default function ClassesPage() {
               <Th>Filière</Th>
               <Th>Effectif</Th>
               <Th>Classe technique</Th>
+              <Th>Salle</Th>
               <ThActions>Actions</ThActions>
             </TableHead>
             {classes.map(c => (
@@ -162,6 +163,16 @@ export default function ClassesPage() {
                     </span>
                   ) : '—'}
                 </Td>
+                <Td>
+                  {c.salle_attachee_nom ? (
+                    <span className="flex items-center gap-1.5 text-sm font-medium text-ink">
+                      <DoorOpen className="h-4 w-4 text-muted" />
+                      {c.salle_attachee_nom}
+                    </span>
+                  ) : (
+                    <span className="text-muted">—</span>
+                  )}
+                </Td>
                 <TdActions>
                   <div className="flex items-center justify-end gap-1">
                     <IconButton label="Modifier" tone="primary" onClick={() => openEdit(c)}>
@@ -192,7 +203,7 @@ export default function ClassesPage() {
         }
       >
         <div className="space-y-4">
-          <Field label="Nom" htmlFor="classe-nom" required>
+          <Field label="Nom" htmlFor="classe-nom" required hint="Une salle « Salle {nom} » est créée automatiquement">
             <Input
               id="classe-nom"
               type="text"

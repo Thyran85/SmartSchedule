@@ -104,11 +104,10 @@ class Command(BaseCommand):
         self.stdout.write('  ✓ Matières assigned to classes')
 
     def _create_salles(self):
+        # Les salles normales de chaque classe sont créées automatiquement
+        # (une salle « Salle {classe} » par classe). Seules les salles
+        # spéciales sont déclarées ici.
         data = [
-            ('Salle 101', 30, 'NORMALE'),
-            ('Salle 102', 30, 'NORMALE'),
-            ('Salle 103', 25, 'NORMALE'),
-            ('Salle 201', 20, 'NORMALE'),
             ('Laboratoire Physique', 20, 'LABORATOIRE'),
             ('Laboratoire SVT', 20, 'LABORATOIRE'),
             ('Salle Informatique', 20, 'INFORMATIQUE'),
